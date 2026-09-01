@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "RM Automotive"
+description = "Automobilių prekybos ir dalių sandėlio valdymo aplikacija, skirta sekti pirkimus, išlaidas, pardavimus, pelną ir dalių likučius vienoje vietoje."
+version = "1.0.0"
+id = "artifacts/rm-automotive"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25552
+
+[services.development]
+run = "pnpm --filter @workspace/rm-automotive run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/rm-automotive", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/rm-automotive/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25552"
+BASE_PATH = "/"
