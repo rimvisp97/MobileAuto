@@ -1,5 +1,8 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -29,7 +32,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { Link, Router as WouterRouter, useLocation } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 type Expense = { id: string; label: string; amount: number; date: string; category?: string };
 type Vehicle = {
@@ -82,6 +85,16 @@ type PartsCar = {
 const queryClient = new QueryClient();
 const VEHICLES_KEY = 'rm-automotive-vehicles-v1';
 const PARTS_KEY = 'rm-automotive-partscars-v1';
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const clerkPubKey = publishableKeyFromHost(
+  window.location.hostname,
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+if (!clerkPubKey) {
+  throw new Error('Trūksta Clerk prisijungimo rakto.');
+}
 
 const seedVehicles: Vehicle[] = [
   {
@@ -360,7 +373,7 @@ function AppShell() {
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className="h-1.5 w-1.5 rounded-full bg-secondary" /> Duomenys saugomi šiame įrenginyje</div>
             <button className="relative rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Pranešimai" data-testid="button-notifications"><Bell size={18} /><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" /></button>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">RM</div>
+             <AccountMenu />
           </div>
         </header>
         <div className="app-shell min-h-[calc(100dvh-72px)] p-5 sm:p-8">
@@ -503,6 +516,23 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
   return <div className="rounded-xl border border-dashed border-border bg-card/55 px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground"><ClipboardList size={22} /></div><h2 className="mt-4 text-lg font-bold">{title}</h2><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{body}</p>{action}</div>;
 }
 
+function AccountMenu() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const [open, setOpen] = useState(false);
+  const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? user?.primaryEmailAddress?.emailAddress?.[0] ?? 'R'}`.toUpperCase();
+
+  return <div className="relative">
+    <button onClick={() => setOpen((current) => !current)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground" aria-label="Atidaryti paskyros meniu" data-testid="button-account-menu">{initials.slice(0, 2)}</button>
+    {open && <div className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-card p-3 shadow-xl">
+      <p className="truncate text-sm font-semibold">{user?.fullName || 'Naudotojas'}</p>
+      <p className="mt-1 truncate text-xs text-muted-foreground">{user?.primaryEmailAddress?.emailAddress}</p>
+      <div className="my-3 border-t border-border" />
+      <button onClick={() => signOut({ redirectUrl: basePath || '/' })} className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-destructive hover:bg-destructive/10" data-testid="button-sign-out">Atsijungti</button>
+    </div>}
+  </div>;
+}
+
 function Modal({ title, eyebrow, children, close }: { title: string; eyebrow: string; children: ReactNode; close: () => void }) {
   return <div className="fixed inset-0 z-[55] flex items-end justify-center bg-foreground/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5"><div className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl"><div className="flex items-start justify-between border-b border-border px-5 py-5 sm:px-6"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">{eyebrow}</p><h2 className="mt-1 text-xl font-bold">{title}</h2></div><button onClick={close} className="rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Uždaryti langą" data-testid="button-close-modal"><X size={19} /></button></div>{children}</div></div>;
 }
@@ -545,12 +575,121 @@ function PartModal({ car, part, close, save, update }: { car?: PartsCar; part?: 
   return <Modal title={part ? 'Redaguoti detalę' : 'Pridėti detalę'} eyebrow={`${car?.make ?? ''} ${car?.model ?? ''}`} close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:p-6"><Field label="Detalės pavadinimas"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="pvz. Generatorius" data-testid="input-part-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="OEM kodas"><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={inputClass} placeholder="nebūtina" data-testid="input-part-code" /></Field><Field label="Kaina, EUR"><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} placeholder="0,00" data-testid="input-part-price" /></Field></div><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Lentyna B3 / dėžė 12" data-testid="input-part-location" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-part">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-part">{part ? 'Išsaugoti pakeitimus' : 'Pridėti detalę'}</button></div></form></Modal>;
 }
 
-function Router() {
+function AuthLoading() {
+  return <div className="flex min-h-[100dvh] items-center justify-center bg-background"><div className="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm"><span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> Tikrinamas prisijungimas...</div></div>;
+}
+
+function AuthLanding() {
+  const [, setLocation] = useLocation();
+  return <main className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
+    <section className="w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+      <div className="grid md:grid-cols-[1.05fr_0.95fr]">
+        <div className="bg-foreground p-8 text-background sm:p-12">
+          <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-mono-ui text-sm font-bold text-primary-foreground">RM</span><div><p className="text-sm font-bold">RM Automotive</p><p className="font-mono-ui text-[9px] uppercase tracking-[0.18em] text-background/45">operator's ledger</p></div></div>
+          <p className="mt-16 font-mono-ui text-[10px] uppercase tracking-[0.2em] text-primary">Privati darbo erdvė</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Tavo automobilių verslo knyga.</h1>
+          <p className="mt-4 max-w-md text-sm leading-6 text-background/65">Pirkimai, remontai, pardavimai ir dalių sandėlis vienoje saugioje vietoje.</p>
+        </div>
+        <div className="flex flex-col justify-center p-8 sm:p-12">
+          <p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Prisijungimas</p>
+          <h2 className="mt-2 text-2xl font-bold">Sveikas sugrįžęs.</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Prisijunk, kad atidarytum savo RM Automotive darbo stalą.</p>
+          <button onClick={() => setLocation('/sign-in')} className="mt-7 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid="button-open-sign-in">Prisijungti</button>
+          <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">Naujas paskyras sukuria tik administratorius.</p>
+        </div>
+      </div>
+    </section>
+  </main>;
+}
+
+function SignInPage() {
+  return <div className="auth-page flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>;
+}
+
+function SignUpPage() {
+  return <div className="auth-page flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+}
+
+function HomeRoute() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <AuthLoading />;
+  return isSignedIn ? <ErrorBoundary resetKey={window.location.pathname}><AppShell /></ErrorBoundary> : <AuthLanding />;
+}
+
+function ProtectedApp() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <AuthLoading />;
+  if (!isSignedIn) return <Redirect to="/sign-in" />;
   return <ErrorBoundary resetKey={window.location.pathname}><AppShell /></ErrorBoundary>;
 }
 
+function Router() {
+  return <Switch>
+    <Route path="/" component={HomeRoute} />
+    <Route path="/sign-in/*?" component={SignInPage} />
+    <Route path="/sign-up/*?" component={SignUpPage} />
+    <Route path="/automobiliai" component={ProtectedApp} />
+    <Route path="/dalys" component={ProtectedApp} />
+    <Route component={ProtectedApp} />
+  </Switch>;
+}
+
+function ClerkApp() {
+  const [, setLocation] = useLocation();
+  function stripBase(path: string) {
+    return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+  }
+
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={{
+      theme: shadcn,
+      cssLayerName: 'clerk',
+      options: {
+        logoPlacement: 'inside',
+        logoLinkUrl: basePath || '/',
+        logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+      },
+      variables: {
+        colorPrimary: '#f7941d',
+        colorForeground: '#202630',
+        colorMutedForeground: '#6d727b',
+        colorBackground: '#fbfaf8',
+        colorInput: '#f7f4ef',
+        colorInputForeground: '#202630',
+        colorNeutral: '#d9d2c7',
+        fontFamily: 'DM Sans, sans-serif',
+        borderRadius: '0.75rem',
+      },
+      elements: {
+        rootBox: 'w-full flex justify-center',
+        cardBox: 'bg-[#fbfaf8] rounded-2xl w-[440px] max-w-full overflow-hidden',
+        card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+        footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+        headerTitle: 'text-[#202630]',
+        headerSubtitle: 'text-[#6d727b]',
+        formFieldLabel: 'text-[#202630]',
+        footerActionLink: 'text-[#157a77]',
+        footerActionText: 'text-[#6d727b]',
+        dividerText: 'text-[#6d727b]',
+        footerAction: 'hidden',
+        formButtonPrimary: 'bg-[#f7941d] text-[#202630] hover:bg-[#df7d0e]',
+        formFieldInput: 'bg-[#f7f4ef] border-[#d9d2c7] text-[#202630]',
+        socialButtonsBlockButton: 'border-[#d9d2c7] bg-[#fbfaf8] text-[#202630]',
+      },
+    }}
+    signInUrl={`${basePath}/sign-in`}
+    signUpUrl={`${basePath}/sign-up`}
+    routerPush={(to) => setLocation(stripBase(to))}
+    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+  >
+    <QueryClientProvider client={queryClient}><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>
+  </ClerkProvider>;
+}
+
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter><Toaster /></TooltipProvider></QueryClientProvider>;
+  return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>;
 }
 
 export default App;
