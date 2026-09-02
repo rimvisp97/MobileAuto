@@ -595,7 +595,12 @@ function AuthLanding() {
           <h2 className="mt-2 text-2xl font-bold">Sveikas sugrįžęs.</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Prisijunk, kad atidarytum savo RM Automotive darbo stalą.</p>
           <button onClick={() => setLocation('/sign-in')} className="mt-7 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid="button-open-sign-in">Prisijungti</button>
-          <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">Naujas paskyras sukuria tik administratorius.</p>
+          <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
+            Neturi paskyros?{' '}
+            <a href={`${basePath}/sign-up`} className="font-bold text-foreground underline decoration-primary decoration-2 underline-offset-4 hover:text-primary" data-testid="link-open-sign-up">
+              Sukurti paskyrą
+            </a>
+          </p>
         </div>
       </div>
     </section>
