@@ -3,11 +3,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
+import { getAccessMe, inviteAccessUser, listAccessUsers, updateAccessUser } from '@workspace/api-client-react';
+import type { AccessUser } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   Activity,
+  Ban,
   ArrowDownLeft,
   ArrowUpRight,
   BadgeEuro,
@@ -17,6 +20,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   CirclePlus,
+  CircleAlert,
   ClipboardList,
   Gauge,
   LayoutDashboard,
@@ -25,10 +29,14 @@ import {
   Pencil,
   Plus,
   Search,
+  RefreshCw,
+  Save,
+  ShieldCheck,
   Settings2,
   ShoppingCart,
   Trash2,
   TrendingUp,
+  UserPlus,
   Wrench,
   X,
 } from 'lucide-react';
@@ -81,6 +89,23 @@ type PartsCar = {
   location?: string;
   createdAt: string;
 };
+
+type PermissionKey = keyof AccessUser['permissions'];
+const permissionDefinitions: Array<{ key: PermissionKey; label: string; group: string }> = [
+  { key: 'viewDashboard', label: 'Pagrindinio ekrano peržiūra', group: 'Bendra' },
+  { key: 'viewFinancials', label: 'Finansinių duomenų peržiūra', group: 'Bendra' },
+  { key: 'viewVehicles', label: 'Automobilių peržiūra', group: 'Automobiliai' },
+  { key: 'createVehicles', label: 'Automobilių kūrimas', group: 'Automobiliai' },
+  { key: 'editVehicles', label: 'Automobilių redagavimas', group: 'Automobiliai' },
+  { key: 'deleteVehicles', label: 'Automobilių trynimas', group: 'Automobiliai' },
+  { key: 'addExpenses', label: 'Išlaidų pridėjimas', group: 'Automobiliai' },
+  { key: 'sellVehicles', label: 'Automobilių pardavimas', group: 'Automobiliai' },
+  { key: 'viewParts', label: 'Dalių peržiūra', group: 'Dalys' },
+  { key: 'manageDonors', label: 'Donorų valdymas', group: 'Dalys' },
+  { key: 'manageParts', label: 'Detalių valdymas', group: 'Dalys' },
+  { key: 'sellParts', label: 'Detalių pardavimas', group: 'Dalys' },
+  { key: 'manageSettings', label: 'Naudotojų ir teisių valdymas', group: 'Sistema' },
+];
 
 const queryClient = new QueryClient();
 const VEHICLES_KEY = 'rm-automotive-vehicles-v1';
@@ -230,7 +255,7 @@ function vehicleCost(vehicle: Vehicle) {
   return vehicle.purchasePrice + totalExpenses(vehicle);
 }
 
-function AppShell() {
+function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
   const [location, setLocation] = useLocation();
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => readStored(VEHICLES_KEY, seedVehicles));
   const [partsCars, setPartsCars] = useState<PartsCar[]>(() => readStored(PARTS_KEY, seedPartsCars));
@@ -365,17 +390,18 @@ function AppShell() {
     flash('Donoras pašalintas');
   }
 
-  const page = location === '/automobiliai' ? 'vehicles' : location === '/dalys' ? 'parts' : 'dashboard';
+  const page: PageName = location === '/automobiliai' ? 'vehicles' : location === '/dalys' ? 'parts' : location === '/nustatymai' ? 'settings' : 'dashboard';
+  const can = (permission: PermissionKey) => currentAccess.role === 'owner' || currentAccess.permissions[permission] === true;
 
   return (
     <div className="noise min-h-[100dvh] bg-background text-foreground">
-      <Sidebar page={page} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} />
+      <Sidebar page={page} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} can={can} />
       <main className="min-h-[100dvh] lg:pl-[272px]">
         <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur-md sm:px-8">
           <div className="flex items-center gap-3">
             <button className="rounded-lg p-2 hover-elevate lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Atidaryti meniu" data-testid="button-open-menu"><Menu size={21} /></button>
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"><span className="font-mono-ui text-[11px] uppercase tracking-[0.18em]">RM /</span><span>{page === 'dashboard' ? 'Pagrindinis' : page === 'vehicles' ? 'Automobiliai' : 'Dalys'}</span></div>
-            <div className="flex items-center gap-2 sm:hidden"><span className="font-mono-ui text-[11px] font-bold tracking-[0.14em]">RM</span><span className="text-muted-foreground">/</span><span className="text-sm font-semibold">{page === 'dashboard' ? 'Pagrindinis' : page === 'vehicles' ? 'Automobiliai' : 'Dalys'}</span></div>
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex"><span className="font-mono-ui text-[11px] uppercase tracking-[0.18em]">RM /</span><span>{page === 'dashboard' ? 'Pagrindinis' : page === 'vehicles' ? 'Automobiliai' : page === 'parts' ? 'Dalys' : 'Nustatymai'}</span></div>
+            <div className="flex items-center gap-2 sm:hidden"><span className="font-mono-ui text-[11px] font-bold tracking-[0.14em]">RM</span><span className="text-muted-foreground">/</span><span className="text-sm font-semibold">{page === 'dashboard' ? 'Pagrindinis' : page === 'vehicles' ? 'Automobiliai' : page === 'parts' ? 'Dalys' : 'Nustatymai'}</span></div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className="h-1.5 w-1.5 rounded-full bg-secondary" /> Duomenys saugomi šiame įrenginyje</div>
@@ -384,9 +410,10 @@ function AppShell() {
           </div>
         </header>
         <div className="app-shell min-h-[calc(100dvh-72px)] p-5 sm:p-8">
-          {page === 'dashboard' && <Dashboard totals={totals} activity={activity} vehicles={vehicles} partsCars={partsCars} navigate={setLocation} />}
-          {page === 'vehicles' && <VehiclesPage vehicles={vehicles} openModal={openModal} deleteVehicle={deleteVehicle} />}
-          {page === 'parts' && <PartsPage partsCars={partsCars} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} />}
+          {page === 'dashboard' && <Dashboard totals={totals} activity={activity} vehicles={vehicles} partsCars={partsCars} navigate={setLocation} can={can} />}
+          {page === 'vehicles' && <VehiclesPage vehicles={vehicles} openModal={openModal} deleteVehicle={deleteVehicle} can={can} />}
+          {page === 'parts' && <PartsPage partsCars={partsCars} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />}
+          {page === 'settings' && <SettingsPage />}
         </div>
       </main>
       {modal === 'vehicle' && <VehicleModal vehicle={vehicles.find((vehicle) => vehicle.id === selectedVehicleId)} close={() => setModal(null)} save={saveVehicle} />}
@@ -399,8 +426,8 @@ function AppShell() {
   );
 }
 
-type PageName = 'dashboard' | 'vehicles' | 'parts';
-function Sidebar({ page, mobileOpen, closeMobile }: { page: PageName; mobileOpen: boolean; closeMobile: () => void }) {
+type PageName = 'dashboard' | 'vehicles' | 'parts' | 'settings';
+function Sidebar({ page, mobileOpen, closeMobile, can }: { page: PageName; mobileOpen: boolean; closeMobile: () => void; can: (permission: PermissionKey) => boolean }) {
   return (
     <>
       {mobileOpen && <button className="fixed inset-0 z-40 bg-foreground/40 lg:hidden" onClick={closeMobile} aria-label="Uždaryti meniu" data-testid="button-close-overlay" />}
@@ -416,12 +443,12 @@ function Sidebar({ page, mobileOpen, closeMobile }: { page: PageName; mobileOpen
           <p className="mb-3 px-3 font-mono-ui text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/40">Darbo stalas</p>
           <nav className="space-y-1">
             <NavLink href="/" icon={<LayoutDashboard size={18} />} active={page === 'dashboard'} label="Pagrindinis" onClick={closeMobile} testId="link-dashboard" />
-            <NavLink href="/automobiliai" icon={<CarFront size={18} />} active={page === 'vehicles'} label="Automobiliai" onClick={closeMobile} testId="link-vehicles" />
-            <NavLink href="/dalys" icon={<Package size={18} />} active={page === 'parts'} label="Dalys" onClick={closeMobile} />
+             {can('viewVehicles') && <NavLink href="/automobiliai" icon={<CarFront size={18} />} active={page === 'vehicles'} label="Automobiliai" onClick={closeMobile} testId="link-vehicles" />}
+             {can('viewParts') && <NavLink href="/dalys" icon={<Package size={18} />} active={page === 'parts'} label="Dalys" onClick={closeMobile} />}
           </nav>
           <p className="mb-3 mt-10 px-3 font-mono-ui text-[10px] uppercase tracking-[0.18em] text-sidebar-foreground/40">Sistema</p>
           <nav className="space-y-1">
-            <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-sidebar-foreground/45" disabled data-testid="button-settings"><Settings2 size={18} /> Nustatymai <span className="ml-auto font-mono-ui text-[9px] uppercase">greitai</span></button>
+             {can('manageSettings') && <NavLink href="/nustatymai" icon={<Settings2 size={18} />} active={page === 'settings'} label="Nustatymai" onClick={closeMobile} testId="link-settings" />}
           </nav>
         </div>
         <div className="mx-4 mb-5 rounded-xl border border-sidebar-border bg-sidebar-accent/55 p-4">
@@ -439,8 +466,8 @@ function NavLink({ href, icon, label, active, onClick, testId }: { href: string;
 }
 
 type MoneyRow = { id: string; date: string; label: string; detail: string; amount: number; kind: 'in' | 'out' };
-type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; vehicleProfit: number; partsProfit: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void };
-function Dashboard({ totals, activity, vehicles, partsCars, navigate }: DashboardProps) {
+type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; vehicleProfit: number; partsProfit: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void; can: (permission: PermissionKey) => boolean };
+function Dashboard({ totals, activity, vehicles, partsCars, navigate, can }: DashboardProps) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'in' | 'out'>('all');
   const [showAllHistory, setShowAllHistory] = useState(false);
   const soldVehicles = vehicles.filter((vehicle) => vehicle.status === 'sold');
@@ -452,8 +479,8 @@ function Dashboard({ totals, activity, vehicles, partsCars, navigate }: Dashboar
   return (
     <section className="mx-auto max-w-[1480px]">
       <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div className="reveal"><p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">RM / {monthLabel()}</p><h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Pagrindinis<span className="text-primary">.</span></h1><p className="mt-2 max-w-md text-sm text-muted-foreground">Tavo dirbtuvių knyga, kur skaičiai kalba tiesiai.</p></div>
-        <div className="flex gap-2 reveal reveal-delay-1"><button onClick={() => navigate('/automobiliai')} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="button-add-vehicle"><Plus size={17} /> Naujas automobilis</button><button onClick={() => navigate('/dalys')} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover-elevate" data-testid="button-open-parts"><Package size={16} /> Dalys</button></div>
+         <div className="reveal"><p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">RM / {monthLabel()}</p><h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Pagrindinis<span className="text-primary">.</span></h1><p className="mt-2 max-w-md text-sm text-muted-foreground">Tavo dirbtuvių knyga, kur skaičiai kalba tiesiai.</p></div>
+         <div className="flex gap-2 reveal reveal-delay-1">{can('createVehicles') && <button onClick={() => navigate('/automobiliai')} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="button-add-vehicle"><Plus size={17} /> Naujas automobilis</button>}{can('viewParts') && <button onClick={() => navigate('/dalys')} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover-elevate" data-testid="button-open-parts"><Package size={16} /> Dalys</button>}</div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Išleista" value={totals.spent} hint="pirkimai + išlaidos" icon={<ArrowDownLeft size={18} />} tone="orange" />
@@ -486,38 +513,139 @@ function SectionHeader({ eyebrow, title, body, action, actionLabel, onAction }: 
   return <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 font-mono-ui text-[10px] uppercase tracking-[0.2em] text-secondary">{eyebrow}</p><h1 className="text-3xl font-bold tracking-tight">{title}<span className="text-primary">.</span></h1><p className="mt-2 text-sm text-muted-foreground">{body}</p></div>{onAction && <button onClick={onAction} className="inline-flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid={`button-${actionLabel?.toLowerCase().replaceAll(' ', '-')}`}>{action}{actionLabel}</button>}</div>;
 }
 
-function VehiclesPage({ vehicles, openModal, deleteVehicle }: { vehicles: Vehicle[]; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void }) {
+function VehiclesPage({ vehicles, openModal, deleteVehicle, can }: { vehicles: Vehicle[]; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void; can: (permission: PermissionKey) => boolean }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'sold'>('all');
   const filtered = vehicles.filter((vehicle) => `${vehicle.make} ${vehicle.model} ${vehicle.year} ${vehicle.engine}`.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || vehicle.status === filter));
-  return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 01" title="Automobiliai" body="Pirk, taisyk, parduok. Kiekvienas euras turi savo vietą." action={<Plus size={17} />} actionLabel="Pridėti automobilį" onAction={() => openModal('vehicle')} /><div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti pagal markę, modelį ar metus..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-vehicles" /></label><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'active', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-${option}`}>{option === 'all' ? 'Visi' : option === 'active' ? 'Aktyvūs' : 'Parduoti'}</button>)}</div></div>{filtered.length === 0 ? <EmptyState title={query ? 'Nieko neradome' : 'Automobilių sąrašas tuščias'} body={query ? 'Pabandyk kitą paieškos frazę.' : 'Pridėk pirmą automobilį ir pradėk vesti jo istoriją.'} action={<button onClick={() => openModal('vehicle')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-vehicle"><Plus size={16} /> Pridėti automobilį</button>} /> : <div className="grid gap-4 lg:grid-cols-2">{filtered.map((vehicle, index) => <VehicleCard key={vehicle.id} vehicle={vehicle} index={index} openModal={openModal} deleteVehicle={deleteVehicle} />)}</div>}</section>;
+   return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 01" title="Automobiliai" body="Pirk, taisyk, parduok. Kiekvienas euras turi savo vietą." action={can('createVehicles') ? <Plus size={17} /> : undefined} actionLabel="Pridėti automobilį" onAction={can('createVehicles') ? () => openModal('vehicle') : undefined} /><div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti pagal markę, modelį ar metus..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-vehicles" /></label><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'active', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-${option}`}>{option === 'all' ? 'Visi' : option === 'active' ? 'Aktyvūs' : 'Parduoti'}</button>)}</div></div>{filtered.length === 0 ? <EmptyState title={query ? 'Nieko neradome' : 'Automobilių sąrašas tuščias'} body={query ? 'Pabandyk kitą paieškos frazę.' : 'Pridėk pirmą automobilį ir pradėk vesti jo istoriją.'} action={can('createVehicles') ? <button onClick={() => openModal('vehicle')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-vehicle"><Plus size={16} /> Pridėti automobilį</button> : undefined} /> : <div className="grid gap-4 lg:grid-cols-2">{filtered.map((vehicle, index) => <VehicleCard key={vehicle.id} vehicle={vehicle} index={index} openModal={openModal} deleteVehicle={deleteVehicle} can={can} />)}</div>}</section>;
 }
 
-function VehicleCard({ vehicle, index, openModal, deleteVehicle }: { vehicle: Vehicle; index: number; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void }) {
+function VehicleCard({ vehicle, index, openModal, deleteVehicle, can }: { vehicle: Vehicle; index: number; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void; can: (permission: PermissionKey) => boolean }) {
   const cost = vehicleCost(vehicle);
   const profit = vehicle.status === 'sold' ? (vehicle.salePrice ?? 0) - cost : 0;
   const forecast = (vehicle.askingPrice ?? 0) - cost;
-  return <article className={`lift rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-${Math.min(index + 1, 3)}`} data-testid={`card-vehicle-${vehicle.id}`}><div className="border-b border-border p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><div className="mb-2 flex flex-wrap items-center gap-2"><span className={`h-2 w-2 rounded-full ${vehicle.status === 'sold' ? 'bg-secondary' : 'bg-primary'}`} /><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{vehicle.status === 'sold' ? 'Parduotas' : 'Aktyvus'}</span>{vehicle.location && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{vehicle.location}</span>}</div><h2 className="text-xl font-bold">{vehicle.year} {vehicle.make} {vehicle.model}</h2><p className="mt-1 text-sm text-muted-foreground">{vehicle.engine} <span className="mx-1">·</span> {vehicle.fuel} <span className="mx-1">·</span> {vehicle.mileage.toLocaleString('lt-LT')} km</p><p className="mt-2 font-mono-ui text-[10px] uppercase tracking-[0.12em] text-muted-foreground/75">{vehicle.registration || 'Registracija nenurodyta'} {vehicle.vin ? ` · VIN ${vehicle.vin.slice(-6)}` : ''}</p></div><div className="flex gap-1"><button onClick={() => openModal('vehicle', vehicle.id)} className="rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Redaguoti automobilį" data-testid={`button-edit-vehicle-${vehicle.id}`}><Pencil size={16} /></button><button onClick={() => deleteVehicle(vehicle.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti automobilį" data-testid={`button-delete-vehicle-${vehicle.id}`}><Trash2 size={16} /></button></div></div><div className="mt-6 grid grid-cols-3 gap-3"><InfoCell label="Pirkimas" value={money(vehicle.purchasePrice)} /><InfoCell label="Išlaidos" value={money(totalExpenses(vehicle))} /><InfoCell label="Savikaina" value={money(cost)} strong /></div></div><div className="flex flex-wrap items-center justify-between gap-3 bg-muted/35 px-5 py-4 sm:px-6">{vehicle.status === 'sold' ? <div><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Rezultatas</p><p className={`font-mono-ui text-lg font-bold ${profit >= 0 ? 'text-secondary' : 'text-destructive'}`}>{profit >= 0 ? '+' : '−'} {money(Math.abs(profit))}</p></div> : <div><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Prognozė</p>{vehicle.askingPrice ? <p className={`font-mono-ui text-lg font-bold ${forecast >= 0 ? 'text-secondary' : 'text-destructive'}`}>{forecast >= 0 ? '+' : '−'} {money(Math.abs(forecast))}</p> : <p className="text-sm font-semibold">Tikslinė kaina nenustatyta</p>}</div>}<div className="flex gap-2">{vehicle.status === 'active' && <><button onClick={() => openModal('expense', vehicle.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold hover-elevate" data-testid={`button-add-expense-${vehicle.id}`}><Wrench size={14} /> Išlaidos</button><button onClick={() => openModal('sell', vehicle.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background hover:opacity-90" data-testid={`button-sell-vehicle-${vehicle.id}`}><BadgeEuro size={14} /> Parduoti</button></>}</div></div>{vehicle.expenses.length > 0 && <div className="border-t border-border px-5 py-4 sm:px-6"><p className="mb-2 font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Išlaidų žurnalas</p><div className="space-y-2">{vehicle.expenses.slice().reverse().map((expense) => <div key={expense.id} className="flex items-center justify-between text-sm"><span className="text-muted-foreground">{expense.label}</span><span className="font-mono-ui text-xs">− {money(expense.amount)}</span></div>)}</div></div>}</article>;
+  return <article className={`lift rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-${Math.min(index + 1, 3)}`} data-testid={`card-vehicle-${vehicle.id}`}><div className="border-b border-border p-5 sm:p-6"><div className="flex items-start justify-between gap-4"><div><div className="mb-2 flex flex-wrap items-center gap-2"><span className={`h-2 w-2 rounded-full ${vehicle.status === 'sold' ? 'bg-secondary' : 'bg-primary'}`} /><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{vehicle.status === 'sold' ? 'Parduotas' : 'Aktyvus'}</span>{vehicle.location && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{vehicle.location}</span>}</div><h2 className="text-xl font-bold">{vehicle.year} {vehicle.make} {vehicle.model}</h2><p className="mt-1 text-sm text-muted-foreground">{vehicle.engine} <span className="mx-1">·</span> {vehicle.fuel} <span className="mx-1">·</span> {vehicle.mileage.toLocaleString('lt-LT')} km</p><p className="mt-2 font-mono-ui text-[10px] uppercase tracking-[0.12em] text-muted-foreground/75">{vehicle.registration || 'Registracija nenurodyta'} {vehicle.vin ? ` · VIN ${vehicle.vin.slice(-6)}` : ''}</p></div><div className="flex gap-1">{can('editVehicles') && <button onClick={() => openModal('vehicle', vehicle.id)} className="rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Redaguoti automobilį" data-testid={`button-edit-vehicle-${vehicle.id}`}><Pencil size={16} /></button>}{can('deleteVehicles') && <button onClick={() => deleteVehicle(vehicle.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti automobilį" data-testid={`button-delete-vehicle-${vehicle.id}`}><Trash2 size={16} /></button>}</div></div><div className="mt-6 grid grid-cols-3 gap-3"><InfoCell label="Pirkimas" value={money(vehicle.purchasePrice)} /><InfoCell label="Išlaidos" value={money(totalExpenses(vehicle))} /><InfoCell label="Savikaina" value={money(cost)} strong /></div></div><div className="flex flex-wrap items-center justify-between gap-3 bg-muted/35 px-5 py-4 sm:px-6">{vehicle.status === 'sold' ? <div><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Rezultatas</p><p className={`font-mono-ui text-lg font-bold ${profit >= 0 ? 'text-secondary' : 'text-destructive'}`}>{profit >= 0 ? '+' : '−'} {money(Math.abs(profit))}</p></div> : <div><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Prognozė</p>{vehicle.askingPrice ? <p className={`font-mono-ui text-lg font-bold ${forecast >= 0 ? 'text-secondary' : 'text-destructive'}`}>{forecast >= 0 ? '+' : '−'} {money(Math.abs(forecast))}</p> : <p className="text-sm font-semibold">Tikslinė kaina nenustatyta</p>}</div>}<div className="flex gap-2">{vehicle.status === 'active' && <>{can('addExpenses') && <button onClick={() => openModal('expense', vehicle.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-bold hover-elevate" data-testid={`button-add-expense-${vehicle.id}`}><Wrench size={14} /> Išlaidos</button>}{can('sellVehicles') && <button onClick={() => openModal('sell', vehicle.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-foreground px-3 py-2 text-xs font-bold text-background hover:opacity-90" data-testid={`button-sell-vehicle-${vehicle.id}`}><BadgeEuro size={14} /> Parduoti</button>}</>}</div></div>{vehicle.expenses.length > 0 && <div className="border-t border-border px-5 py-4 sm:px-6"><p className="mb-2 font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Išlaidų žurnalas</p><div className="space-y-2">{vehicle.expenses.slice().reverse().map((expense) => <div key={expense.id} className="flex items-center justify-between text-sm"><span className="text-muted-foreground">{expense.label}</span><span className="font-mono-ui text-xs">− {money(expense.amount)}</span></div>)}</div></div>}</article>;
 }
 
 function InfoCell({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return <div><p className="mb-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{label}</p><p className={`font-mono-ui text-xs ${strong ? 'font-bold text-foreground' : ''}`}>{value}</p></div>;
 }
 
-function PartsPage({ partsCars, openModal, togglePart, deletePartsCar, deletePart }: { partsCars: PartsCar[]; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void }) {
+function PartsPage({ partsCars, openModal, togglePart, deletePartsCar, deletePart, can }: { partsCars: PartsCar[]; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: PermissionKey) => boolean }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'inventory' | 'sold'>('all');
   const filtered = partsCars.filter((car) => `${car.make} ${car.model} ${car.year} ${car.engine}`.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || car.parts.some((part) => part.status === filter)));
   const inventoryCount = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'inventory').length, 0);
   const soldCount = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'sold').length, 0);
-  return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 02" title="Dalys" body="Donorai kelyje į antrą gyvenimą. Parduotų detalių pinigai grįžta į knygą." action={<Plus size={17} />} actionLabel="Pridėti donorą" onAction={() => openModal('partsCar')} /><div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti donorų..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-parts" /></label><div className="flex items-center justify-between gap-3"><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'inventory', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-parts-${option}`}>{option === 'all' ? 'Visi' : option === 'inventory' ? 'Sandėlyje' : 'Parduotos'}</button>)}</div><span className="hidden font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:block">{inventoryCount} sandėlyje · {soldCount} parduotos</span></div></div>{filtered.length === 0 ? <EmptyState title="Donorų neradome" body="Pridėk automobilį ardymui arba pakeisk paiešką." action={<button onClick={() => openModal('partsCar')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-donor"><Plus size={16} /> Pridėti donorą</button>} /> : <div className="space-y-5">{filtered.map((car, index) => <PartsCarCard key={car.id} car={car} index={index} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} />)}</div>}</section>;
+  return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 02" title="Dalys" body="Donorai kelyje į antrą gyvenimą. Parduotų detalių pinigai grįžta į knygą." action={can('manageDonors') ? <Plus size={17} /> : undefined} actionLabel="Pridėti donorą" onAction={can('manageDonors') ? () => openModal('partsCar') : undefined} /><div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti donorų..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-parts" /></label><div className="flex items-center justify-between gap-3"><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'inventory', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-parts-${option}`}>{option === 'all' ? 'Visi' : option === 'inventory' ? 'Sandėlyje' : 'Parduotos'}</button>)}</div><span className="hidden font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:block">{inventoryCount} sandėlyje · {soldCount} parduotos</span></div></div>{filtered.length === 0 ? <EmptyState title="Donorų neradome" body="Pridėk automobilį ardymui arba pakeisk paiešką." action={can('manageDonors') ? <button onClick={() => openModal('partsCar')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-donor"><Plus size={16} /> Pridėti donorą</button> : undefined} /> : <div className="space-y-5">{filtered.map((car, index) => <PartsCarCard key={car.id} car={car} index={index} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />)}</div>}</section>;
 }
 
-function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, deletePart }: { car: PartsCar; index: number; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void }) {
+function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, deletePart, can }: { car: PartsCar; index: number; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: PermissionKey) => boolean }) {
   const sold = car.parts.filter((part) => part.status === 'sold').reduce((sum, part) => sum + part.price, 0);
   const inventory = car.parts.filter((part) => part.status === 'inventory').reduce((sum, part) => sum + part.price, 0);
   const recovery = car.purchasePrice ? sold / car.purchasePrice * 100 : 0;
-  return <article className={`lift overflow-hidden rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-${Math.min(index + 1, 3)}`} data-testid={`card-parts-car-${car.id}`}><div className="flex flex-col gap-5 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"><div className="flex items-start gap-4"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><CarFront size={21} /></div><div><div className="mb-1 flex flex-wrap items-center gap-2"><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-secondary">Donoras · {shortDate(car.createdAt)}</span>{car.location && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{car.location}</span>}</div><h2 className="text-xl font-bold">{car.year} {car.make} {car.model}</h2><p className="mt-1 text-sm text-muted-foreground">{car.engine} <span className="mx-1">·</span> {car.mileage.toLocaleString('lt-LT')} km <span className="mx-1">·</span> pirkta už {money(car.purchasePrice)}</p></div></div><div className="flex items-center gap-2"><button onClick={() => openModal('partsCar', car.id)} className="rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Redaguoti donorą" data-testid={`button-edit-donor-${car.id}`}><Pencil size={16} /></button><button onClick={() => deletePartsCar(car.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti donorą" data-testid={`button-delete-donor-${car.id}`}><Trash2 size={16} /></button><button onClick={() => openModal('part', car.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground" data-testid={`button-add-part-${car.id}`}><Plus size={15} /> Pridėti detalę</button></div></div><div className="grid border-b border-border bg-muted/30 sm:grid-cols-4"><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Parduota</p><p className="mt-1 font-mono-ui text-sm font-bold text-secondary">{money(sold)}</p></div><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Sandėlyje</p><p className="mt-1 font-mono-ui text-sm font-bold">{money(inventory)}</p></div><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Atsipirkimas</p><p className={`mt-1 font-mono-ui text-sm font-bold ${recovery >= 100 ? 'text-secondary' : 'text-foreground'}`}>{Math.round(recovery)}%</p></div><div className="px-5 py-3 sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Detalių</p><p className="mt-1 font-mono-ui text-sm font-bold">{car.parts.length}</p></div></div>{car.parts.length > 0 ? <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead><tr className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground"><th className="px-5 py-3 font-mono-ui sm:px-6">Detalė</th><th className="px-3 py-3 font-mono-ui">Kodas</th><th className="px-3 py-3 font-mono-ui">Vieta</th><th className="px-3 py-3 font-mono-ui">Kaina</th><th className="px-5 py-3 text-right font-mono-ui sm:px-6">Būsena</th></tr></thead><tbody>{car.parts.map((part) => <tr key={part.id} className="border-t border-border/70 hover:bg-muted/30" data-testid={`row-part-${part.id}`}><td className="px-5 py-3.5 text-sm font-semibold sm:px-6">{part.name}</td><td className="px-3 py-3.5 font-mono-ui text-xs text-muted-foreground">{part.code || '—'}</td><td className="px-3 py-3.5 text-xs text-muted-foreground">{part.location || '—'}</td><td className="px-3 py-3.5 font-mono-ui text-xs">{money(part.price)}</td><td className="px-5 py-3.5 text-right sm:px-6"><div className="flex items-center justify-end gap-1.5"><button onClick={() => openModal('part', car.id, part.id)} className="rounded-md p-1.5 text-muted-foreground hover-elevate" aria-label="Redaguoti detalę" data-testid={`button-edit-part-${part.id}`}><Pencil size={14} /></button><button onClick={() => deletePart(car.id, part.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti detalę" data-testid={`button-delete-part-${part.id}`}><Trash2 size={14} /></button><button onClick={() => togglePart(car.id, part.id)} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`} data-testid={`button-toggle-part-${part.id}`}>{part.status === 'sold' ? <Check size={12} /> : <Package size={12} />}{part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}</button></div></td></tr>)}</tbody></table></div> : <div className="paper-line px-6 py-8 text-center"><Package size={24} className="mx-auto text-muted-foreground/50" /><p className="mt-3 text-sm font-semibold">Detalės dar nesurašytos</p><p className="mt-1 text-xs text-muted-foreground">Pridėk pirmą detalę iš šio donoro.</p></div>}</article>;
+  return <article className={`lift overflow-hidden rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-${Math.min(index + 1, 3)}`} data-testid={`card-parts-car-${car.id}`}><div className="flex flex-col gap-5 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"><div className="flex items-start gap-4"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><CarFront size={21} /></div><div><div className="mb-1 flex flex-wrap items-center gap-2"><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-secondary">Donoras · {shortDate(car.createdAt)}</span>{car.location && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{car.location}</span>}</div><h2 className="text-xl font-bold">{car.year} {car.make} {car.model}</h2><p className="mt-1 text-sm text-muted-foreground">{car.engine} <span className="mx-1">·</span> {car.mileage.toLocaleString('lt-LT')} km <span className="mx-1">·</span> pirkta už {money(car.purchasePrice)}</p></div></div><div className="flex items-center gap-2">{can('manageDonors') && <><button onClick={() => openModal('partsCar', car.id)} className="rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Redaguoti donorą" data-testid={`button-edit-donor-${car.id}`}><Pencil size={16} /></button><button onClick={() => deletePartsCar(car.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti donorą" data-testid={`button-delete-donor-${car.id}`}><Trash2 size={16} /></button></>}{can('manageParts') && <button onClick={() => openModal('part', car.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground" data-testid={`button-add-part-${car.id}`}><Plus size={15} /> Pridėti detalę</button>}</div></div><div className="grid border-b border-border bg-muted/30 sm:grid-cols-4"><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Parduota</p><p className="mt-1 font-mono-ui text-sm font-bold text-secondary">{money(sold)}</p></div><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Sandėlyje</p><p className="mt-1 font-mono-ui text-sm font-bold">{money(inventory)}</p></div><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Atsipirkimas</p><p className={`mt-1 font-mono-ui text-sm font-bold ${recovery >= 100 ? 'text-secondary' : 'text-foreground'}`}>{Math.round(recovery)}%</p></div><div className="px-5 py-3 sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Detalių</p><p className="mt-1 font-mono-ui text-sm font-bold">{car.parts.length}</p></div></div>{car.parts.length > 0 ? <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead><tr className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground"><th className="px-5 py-3 font-mono-ui sm:px-6">Detalė</th><th className="px-3 py-3 font-mono-ui">Kodas</th><th className="px-3 py-3 font-mono-ui">Vieta</th><th className="px-3 py-3 font-mono-ui">Kaina</th><th className="px-5 py-3 text-right font-mono-ui sm:px-6">Būsena</th></tr></thead><tbody>{car.parts.map((part) => <tr key={part.id} className="border-t border-border/70 hover:bg-muted/30" data-testid={`row-part-${part.id}`}><td className="px-5 py-3.5 text-sm font-semibold sm:px-6">{part.name}</td><td className="px-3 py-3.5 font-mono-ui text-xs text-muted-foreground">{part.code || '—'}</td><td className="px-3 py-3.5 text-xs text-muted-foreground">{part.location || '—'}</td><td className="px-3 py-3.5 font-mono-ui text-xs">{money(part.price)}</td><td className="px-5 py-3.5 text-right sm:px-6"><div className="flex items-center justify-end gap-1.5">{can('manageParts') && <><button onClick={() => openModal('part', car.id, part.id)} className="rounded-md p-1.5 text-muted-foreground hover-elevate" aria-label="Redaguoti detalę" data-testid={`button-edit-part-${part.id}`}><Pencil size={14} /></button><button onClick={() => deletePart(car.id, part.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti detalę" data-testid={`button-delete-part-${part.id}`}><Trash2 size={14} /></button></>}{can('sellParts') && <button onClick={() => togglePart(car.id, part.id)} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`} data-testid={`button-toggle-part-${part.id}`}>{part.status === 'sold' ? <Check size={12} /> : <Package size={12} />}{part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}</button>}</div></td></tr>)}</tbody></table></div> : <div className="paper-line px-6 py-8 text-center"><Package size={24} className="mx-auto text-muted-foreground/50" /><p className="mt-3 text-sm font-semibold">Detalės dar nesurašytos</p><p className="mt-1 text-xs text-muted-foreground">Pridėk pirmą detalę iš šio donoro.</p></div>}</article>;
+}
+
+function SettingsPage() {
+  const [users, setUsers] = useState<AccessUser[]>([]);
+  const [drafts, setDrafts] = useState<Record<number, Record<string, boolean>>>({});
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [savingId, setSavingId] = useState<number>();
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  async function loadUsers(showRefresh = false) {
+    setError('');
+    if (showRefresh) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const data = await listAccessUsers();
+      setUsers(data);
+      setDrafts(Object.fromEntries(data.map((user) => [user.id, { ...user.permissions }])));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Nepavyko įkelti naudotojų.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadUsers();
+  }, []);
+
+  async function invite(event: FormEvent) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    try {
+      await inviteAccessUser({ email });
+      setEmail('');
+      setMessage('Kvietimas išsiųstas. Naudotojas bus rodomas kaip laukiantis.');
+      await loadUsers();
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : 'Kvietimo išsiųsti nepavyko.');
+    }
+  }
+
+  async function saveUser(user: AccessUser, status: 'approved' | 'suspended') {
+    setSavingId(user.id);
+    setError('');
+    setMessage('');
+    try {
+      await updateAccessUser(user.id, {
+        status,
+        permissions: drafts[user.id] ?? user.permissions,
+      });
+      setMessage(status === 'approved' ? `${user.email} patvirtintas.` : `${user.email} sustabdytas.`);
+      await loadUsers();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Pakeitimų išsaugoti nepavyko.');
+    } finally {
+      setSavingId(undefined);
+    }
+  }
+
+  function togglePermission(userId: number, key: PermissionKey) {
+    setDrafts((current) => ({
+      ...current,
+      [userId]: {
+        ...current[userId],
+        [key]: !(current[userId]?.[key] ?? false),
+      },
+    }));
+  }
+
+  return <section className="mx-auto max-w-[1200px]">
+    <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+      <div><p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">Sistema / 03</p><h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Nustatymai<span className="text-primary">.</span></h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Valdyk darbuotojų paskyras ir tiksliai pasirink, ką kiekvienas gali atlikti.</p></div>
+      <button onClick={() => void loadUsers(true)} disabled={refreshing} className="inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover-elevate disabled:opacity-50"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> Atnaujinti</button>
+    </div>
+    {message && <div className="mb-5 flex items-center gap-2 rounded-lg border border-secondary/30 bg-secondary/10 px-4 py-3 text-sm text-secondary"><Check size={16} /> {message}</div>}
+    {error && <div className="mb-5 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"><CircleAlert size={16} className="mt-0.5 shrink-0" /> <span>{error}</span></div>}
+    <div className="mb-7 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+      <div className="mb-4 flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary"><UserPlus size={19} /></div><div><h2 className="font-bold">Pakviesti darbuotoją</h2><p className="mt-1 text-sm text-muted-foreground">Kvietimas bus išsiųstas el. paštu per saugų registracijos procesą.</p></div></div>
+      <form onSubmit={invite} className="flex flex-col gap-3 sm:flex-row"><input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="darbuotojas@imone.lt" className={`${inputClass} sm:max-w-md`} data-testid="input-invite-email" /><button type="submit" className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground"><UserPlus size={16} /> Siųsti kvietimą</button></form>
+    </div>
+    <div className="mb-4 flex items-center justify-between"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Prieigos registras</p><h2 className="mt-1 text-xl font-bold">Naudotojai</h2></div><span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">{users.length} paskyros</span></div>
+    {loading ? <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">Kraunamas naudotojų sąrašas...</div> : users.length === 0 ? <EmptyState title="Naudotojų nėra" body="Pakviesk pirmą darbuotoją aukščiau." /> : <div className="space-y-4">{users.map((user) => {
+      const isOwner = user.role === 'owner';
+      const draft = drafts[user.id] ?? user.permissions;
+      const groups = Array.from(new Set(permissionDefinitions.map((permission) => permission.group)));
+      return <article key={user.id} className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6" data-testid={`card-access-user-${user.id}`}>
+        <div className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isOwner ? 'bg-primary/15 text-primary' : 'bg-accent text-accent-foreground'}`}>{isOwner ? <ShieldCheck size={19} /> : <span className="text-sm font-bold">{user.name.slice(0, 1).toUpperCase()}</span>}</div><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{user.name}</h3><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isOwner ? 'bg-primary/15 text-primary' : user.status === 'approved' ? 'bg-secondary/15 text-secondary' : user.status === 'suspended' ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'}`}>{isOwner ? 'Savininkas' : user.status === 'approved' ? 'Patvirtintas' : user.status === 'suspended' ? 'Sustabdytas' : 'Laukiantis'}</span></div><p className="mt-1 text-sm text-muted-foreground">{user.email}</p>{!user.clerkUserId && <p className="mt-1 text-xs text-muted-foreground">Dar neužbaigė registracijos</p>}</div></div>
+          {!isOwner && <div className="flex flex-wrap gap-2">{user.status === 'pending' && user.clerkUserId && <button onClick={() => void saveUser(user, 'approved')} disabled={savingId === user.id} className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-bold text-secondary-foreground disabled:opacity-50"><Check size={14} /> Patvirtinti</button>}{user.status === 'pending' && !user.clerkUserId && <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">Laukiama registracijos</span>}{user.status === 'approved' && <button onClick={() => void saveUser(user, 'suspended')} disabled={savingId === user.id} className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 disabled:opacity-50"><Ban size={14} /> Sustabdyti</button>}{user.status === 'suspended' && <button onClick={() => void saveUser(user, 'approved')} disabled={savingId === user.id || !user.clerkUserId} className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-bold text-secondary-foreground disabled:opacity-50"><Check size={14} /> Vėl patvirtinti</button>}</div>}
+        </div>
+        <div className="pt-5"><div className="mb-3 flex items-center justify-between"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Operacijų leidimai</p><p className="mt-1 text-xs text-muted-foreground">{isOwner ? 'Savininkas turi pilną prieigą.' : 'Pažymėk tik tas operacijas, kurių reikia darbuotojui.'}</p></div>{!isOwner && <button onClick={() => void saveUser(user, user.status === 'approved' ? 'approved' : 'suspended')} disabled={savingId === user.id || user.status === 'pending' || !user.clerkUserId} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold hover-elevate disabled:cursor-not-allowed disabled:opacity-40"><Save size={14} /> Išsaugoti teises</button>}</div>
+          {isOwner ? <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground">Visos operacijos prieinamos savininkui pagal nutylėjimą.</div> : <div className="grid gap-4 md:grid-cols-2">{groups.map((group) => <div key={group} className="rounded-lg border border-border/70 p-3"><p className="mb-2 font-mono-ui text-[10px] uppercase tracking-[0.14em] text-secondary">{group}</p><div className="space-y-2">{permissionDefinitions.filter((permission) => permission.group === group).map((permission) => <label key={permission.key} className="flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(draft[permission.key])} onChange={() => togglePermission(user.id, permission.key)} className="h-4 w-4 accent-primary" /> {permission.label}</label>)}</div></div>)}</div>}
+        </div>
+      </article>;
+    })}</div>}
+  </section>;
 }
 
 function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
@@ -615,6 +743,48 @@ function AuthLanding() {
   </main>;
 }
 
+function AccessBlocked({ status }: { status: 'pending' | 'suspended' }) {
+  const { signOut } = useClerk();
+  const pending = status === 'pending';
+  return <main className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
+    <section className="w-full max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-2xl sm:p-12">
+      <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ${pending ? 'bg-primary/15 text-primary' : 'bg-destructive/10 text-destructive'}`}>{pending ? <ShieldCheck size={26} /> : <Ban size={26} />}</div>
+      <p className="mt-7 font-mono-ui text-[10px] uppercase tracking-[0.2em] text-secondary">Prieiga prie RM Automotive</p>
+      <h1 className="mt-3 text-2xl font-bold">{pending ? 'Paskyra laukia patvirtinimo.' : 'Paskyra sustabdyta.'}</h1>
+      <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{pending ? 'Savininkas turi patvirtinti tavo paskyrą prieš atidarant darbo stalą. Pabandyk dar kartą vėliau.' : 'Šiuo metu negali naudotis aplikacija. Susisiek su savininku, jei manai, kad tai klaida.'}</p>
+      <button onClick={() => void signOut()} className="mt-7 rounded-lg border border-border px-4 py-2.5 text-sm font-bold hover-elevate">Atsijungti</button>
+    </section>
+  </main>;
+}
+
+function AccessGate() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const [access, setAccess] = useState<AccessUser>();
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    let cancelled = false;
+    getAccessMe()
+      .then((data) => {
+        if (!cancelled) setAccess(data);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Nepavyko patikrinti prieigos.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoaded, isSignedIn]);
+
+  if (!isLoaded) return <AuthLoading />;
+  if (!isSignedIn) return <Redirect to="/sign-in" />;
+  if (error) return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-center"><div><CircleAlert className="mx-auto text-destructive" /><p className="mt-3 text-sm text-muted-foreground">{error}</p><button onClick={() => window.location.reload()} className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground">Bandyti dar kartą</button></div></div>;
+  if (!access) return <AuthLoading />;
+  if (access.status === 'pending' || access.status === 'suspended') return <AccessBlocked status={access.status} />;
+  return <ErrorBoundary resetKey={window.location.pathname}><AppShell currentAccess={access} /></ErrorBoundary>;
+}
+
 function SignInPage() {
   return <div className="auth-page flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>;
 }
@@ -626,14 +796,11 @@ function SignUpPage() {
 function HomeRoute() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <AuthLoading />;
-  return isSignedIn ? <ErrorBoundary resetKey={window.location.pathname}><AppShell /></ErrorBoundary> : <AuthLanding />;
+  return isSignedIn ? <AccessGate /> : <AuthLanding />;
 }
 
 function ProtectedApp() {
-  const { isLoaded, isSignedIn } = useAuth();
-  if (!isLoaded) return <AuthLoading />;
-  if (!isSignedIn) return <Redirect to="/sign-in" />;
-  return <ErrorBoundary resetKey={window.location.pathname}><AppShell /></ErrorBoundary>;
+  return <AccessGate />;
 }
 
 function Router() {
@@ -643,6 +810,7 @@ function Router() {
     <Route path="/sign-up/*?" component={SignUpPage} />
     <Route path="/automobiliai" component={ProtectedApp} />
     <Route path="/dalys" component={ProtectedApp} />
+    <Route path="/nustatymai" component={ProtectedApp} />
     <Route component={ProtectedApp} />
   </Switch>;
 }
