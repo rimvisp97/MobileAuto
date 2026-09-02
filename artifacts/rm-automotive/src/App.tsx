@@ -254,7 +254,7 @@ function AppShell() {
     const donorSpent = partsCars.reduce((sum, car) => sum + car.purchasePrice, 0);
     const vehicleRevenue = vehicles.reduce((sum, vehicle) => sum + (vehicle.salePrice ?? 0), 0);
     const partsRevenue = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'sold').reduce((partSum, part) => partSum + part.price, 0), 0);
-    return { spent: vehicleSpent + donorSpent, revenue: vehicleRevenue + partsRevenue, profit: vehicleRevenue + partsRevenue - vehicleSpent - donorSpent };
+    return { spent: vehicleSpent + donorSpent, vehicleRevenue, partsRevenue, profit: vehicleRevenue + partsRevenue - vehicleSpent - donorSpent };
   }, [vehicles, partsCars]);
 
   const activity = useMemo(() => {
@@ -432,7 +432,7 @@ function NavLink({ href, icon, label, active, onClick, testId }: { href: string;
 }
 
 type MoneyRow = { id: string; date: string; label: string; detail: string; amount: number; kind: 'in' | 'out' };
-type DashboardProps = { totals: { spent: number; revenue: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void };
+type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void };
 function Dashboard({ totals, activity, vehicles, partsCars, navigate }: DashboardProps) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'in' | 'out'>('all');
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -448,10 +448,11 @@ function Dashboard({ totals, activity, vehicles, partsCars, navigate }: Dashboar
         <div className="reveal"><p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">RM / {monthLabel()}</p><h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Pagrindinis<span className="text-primary">.</span></h1><p className="mt-2 max-w-md text-sm text-muted-foreground">Tavo dirbtuvių knyga, kur skaičiai kalba tiesiai.</p></div>
         <div className="flex gap-2 reveal reveal-delay-1"><button onClick={() => navigate('/automobiliai')} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="button-add-vehicle"><Plus size={17} /> Naujas automobilis</button><button onClick={() => navigate('/dalys')} className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover-elevate" data-testid="button-open-parts"><Package size={16} /> Dalys</button></div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Išleista" value={totals.spent} hint="pirkimai + išlaidos" icon={<ArrowDownLeft size={18} />} tone="orange" />
-        <MetricCard label="Suprekiauta" value={totals.revenue} hint="automobiliai + dalys" icon={<ArrowUpRight size={18} />} tone="teal" />
-        <MetricCard label="Uždirbta" value={totals.profit} hint="realus rezultatas" icon={<TrendingUp size={18} />} tone="dark" />
+         <MetricCard label="Suprekiauta dalimis" value={totals.partsRevenue} hint="parduotos detalės" icon={<Package size={18} />} tone="teal" />
+         <MetricCard label="Suprekiauta automobiliais" value={totals.vehicleRevenue} hint="parduoti automobiliai" icon={<CarFront size={18} />} tone="blue" />
+         <MetricCard label="Uždirbta" value={totals.profit} hint="realus rezultatas" icon={<TrendingUp size={18} />} tone="dark" />
       </div>
       <div className="mt-8 grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
         <div className="rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-1">
@@ -469,8 +470,8 @@ function Dashboard({ totals, activity, vehicles, partsCars, navigate }: Dashboar
   );
 }
 
-function MetricCard({ label, value, hint, icon, tone }: { label: string; value: number; hint: string; icon: ReactNode; tone: 'orange' | 'teal' | 'dark' }) {
-  const styles = tone === 'orange' ? 'bg-primary text-primary-foreground' : tone === 'teal' ? 'bg-secondary text-secondary-foreground' : 'bg-foreground text-background';
+function MetricCard({ label, value, hint, icon, tone }: { label: string; value: number; hint: string; icon: ReactNode; tone: 'orange' | 'teal' | 'blue' | 'dark' }) {
+  const styles = tone === 'orange' ? 'bg-primary text-primary-foreground' : tone === 'teal' ? 'bg-secondary text-secondary-foreground' : tone === 'blue' ? 'bg-accent text-accent-foreground' : 'bg-foreground text-background';
   return <div className={`lift rounded-xl border border-transparent p-5 shadow-sm ${styles}`}><div className="flex items-start justify-between"><span className="text-xs font-semibold opacity-75">{label}</span><span className="opacity-80">{icon}</span></div><p className="mt-6 font-mono-ui text-[25px] font-bold tracking-tight">{money(value)}</p><p className="mt-1 text-xs opacity-65">{hint}</p></div>;
 }
 
