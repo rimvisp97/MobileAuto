@@ -254,7 +254,14 @@ function AppShell() {
     const donorSpent = partsCars.reduce((sum, car) => sum + car.purchasePrice, 0);
     const vehicleRevenue = vehicles.reduce((sum, vehicle) => sum + (vehicle.salePrice ?? 0), 0);
     const partsRevenue = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'sold').reduce((partSum, part) => partSum + part.price, 0), 0);
-    return { spent: vehicleSpent + donorSpent, vehicleRevenue, partsRevenue, profit: vehicleRevenue + partsRevenue - vehicleSpent - donorSpent };
+    return {
+      spent: vehicleSpent + donorSpent,
+      vehicleRevenue,
+      partsRevenue,
+      vehicleProfit: vehicleRevenue - vehicleSpent,
+      partsProfit: partsRevenue - donorSpent,
+      profit: vehicleRevenue + partsRevenue - vehicleSpent - donorSpent,
+    };
   }, [vehicles, partsCars]);
 
   const activity = useMemo(() => {
@@ -432,7 +439,7 @@ function NavLink({ href, icon, label, active, onClick, testId }: { href: string;
 }
 
 type MoneyRow = { id: string; date: string; label: string; detail: string; amount: number; kind: 'in' | 'out' };
-type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void };
+type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; vehicleProfit: number; partsProfit: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void };
 function Dashboard({ totals, activity, vehicles, partsCars, navigate }: DashboardProps) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'in' | 'out'>('all');
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -450,8 +457,8 @@ function Dashboard({ totals, activity, vehicles, partsCars, navigate }: Dashboar
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Išleista" value={totals.spent} hint="pirkimai + išlaidos" icon={<ArrowDownLeft size={18} />} tone="orange" />
-         <MetricCard label="Suprekiauta dalimis" value={totals.partsRevenue} hint="parduotos detalės" icon={<Package size={18} />} tone="teal" />
-         <MetricCard label="Suprekiauta automobiliais" value={totals.vehicleRevenue} hint="parduoti automobiliai" icon={<CarFront size={18} />} tone="blue" />
+         <MetricCard label="Suprekiauta dalimis" value={totals.partsRevenue} hint="parduotos detalės" profit={totals.partsProfit} icon={<Package size={18} />} tone="teal" />
+         <MetricCard label="Suprekiauta automobiliais" value={totals.vehicleRevenue} hint="parduoti automobiliai" profit={totals.vehicleProfit} icon={<CarFront size={18} />} tone="blue" />
          <MetricCard label="Uždirbta" value={totals.profit} hint="realus rezultatas" icon={<TrendingUp size={18} />} tone="dark" />
       </div>
       <div className="mt-8 grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
@@ -470,9 +477,9 @@ function Dashboard({ totals, activity, vehicles, partsCars, navigate }: Dashboar
   );
 }
 
-function MetricCard({ label, value, hint, icon, tone }: { label: string; value: number; hint: string; icon: ReactNode; tone: 'orange' | 'teal' | 'blue' | 'dark' }) {
+function MetricCard({ label, value, hint, profit, icon, tone }: { label: string; value: number; hint: string; profit?: number; icon: ReactNode; tone: 'orange' | 'teal' | 'blue' | 'dark' }) {
   const styles = tone === 'orange' ? 'bg-primary text-primary-foreground' : tone === 'teal' ? 'bg-secondary text-secondary-foreground' : tone === 'blue' ? 'bg-accent text-accent-foreground' : 'bg-foreground text-background';
-  return <div className={`lift rounded-xl border border-transparent p-5 shadow-sm ${styles}`}><div className="flex items-start justify-between"><span className="text-xs font-semibold opacity-75">{label}</span><span className="opacity-80">{icon}</span></div><p className="mt-6 font-mono-ui text-[25px] font-bold tracking-tight">{money(value)}</p><p className="mt-1 text-xs opacity-65">{hint}</p></div>;
+  return <div className={`lift rounded-xl border border-transparent p-5 shadow-sm ${styles}`}><div className="flex items-start justify-between"><span className="text-xs font-semibold opacity-75">{label}</span><span className="opacity-80">{icon}</span></div><p className="mt-6 font-mono-ui text-[25px] font-bold tracking-tight">{money(value)}</p><p className="mt-1 text-xs opacity-65">{hint}</p>{profit !== undefined && <div className="mt-4 flex items-center justify-between gap-2 border-t border-current/20 pt-3"><span className="text-xs opacity-70">Uždirbta</span><span className={`font-mono-ui text-sm font-bold ${profit < 0 ? 'text-destructive' : 'text-current'}`}>{profit >= 0 ? '+' : '−'}{money(Math.abs(profit))}</span></div>}</div>;
 }
 
 function SectionHeader({ eyebrow, title, body, action, actionLabel, onAction }: { eyebrow: string; title: string; body: string; action?: ReactNode; actionLabel?: string; onAction?: () => void }) {
