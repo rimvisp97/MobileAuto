@@ -207,7 +207,7 @@ function readStored<T>(key: string, fallback: T): T {
 }
 
 function money(value: number) {
-  return new Intl.NumberFormat('lt-LT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(value);
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 2 }).format(value);
 }
 
 function shortDate(value: string) {
@@ -546,7 +546,7 @@ function Modal({ title, eyebrow, children, close }: { title: string; eyebrow: st
 }
 
 function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
-  return <label className={wide ? 'sm:col-span-2' : ''}><span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{label}</span>{children}</label>;
+  return <label className={wide ? 'sm:col-span-2' : ''}><span className="mb-1.5 block text-xs font-semibold text-muted-foreground">{label.replaceAll('EUR', 'GBP')}</span>{children}</label>;
 }
 
 const inputClass = 'h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20';
