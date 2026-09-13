@@ -20,6 +20,11 @@ function serialize(row: typeof syncSettingsTable.$inferSelect) {
   };
 }
 
+function settingKey(value: string | string[] | undefined) {
+  const joined = Array.isArray(value) ? value.join("/") : value ?? "";
+  return decodeURIComponent(joined);
+}
+
 function sendConflict(
   res: Response,
   message: string,
@@ -37,8 +42,8 @@ router.get("/settings", async (_req, res): Promise<void> => {
   res.json(ListSyncSettingsResponse.parse(rows.map(serialize)));
 });
 
-router.put("/settings/:key", async (req, res): Promise<void> => {
-  const params = UpsertSyncSettingParams.safeParse(req.params);
+router.put("/settings/*key", async (req, res): Promise<void> => {
+  const params = UpsertSyncSettingParams.safeParse({ key: settingKey(req.params.key) });
   const parsed = UpsertSyncSettingBody.safeParse(req.body);
   if (!params.success || !parsed.success) {
     res.status(400).json({ error: "Neteisingi bendrų nustatymų duomenys." });
@@ -109,8 +114,8 @@ router.put("/settings/:key", async (req, res): Promise<void> => {
   res.json(UpsertSyncSettingResponse.parse(serialize(updated)));
 });
 
-router.delete("/settings/:key", async (req, res): Promise<void> => {
-  const params = DeleteSyncSettingParams.safeParse(req.params);
+router.delete("/settings/*key", async (req, res): Promise<void> => {
+  const params = DeleteSyncSettingParams.safeParse({ key: settingKey(req.params.key) });
   if (!params.success) {
     res.status(400).json({ error: "Neteisingas nustatymo raktas." });
     return;
