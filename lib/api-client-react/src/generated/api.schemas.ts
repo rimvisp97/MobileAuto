@@ -149,3 +149,327 @@ export interface PartImportInput {
   parts: PartImportItem[];
 }
 
+export type VehicleStatus = typeof VehicleStatus[keyof typeof VehicleStatus];
+
+
+export const VehicleStatus = {
+  active: 'active',
+  sold: 'sold',
+} as const;
+
+export interface Expense {
+  /** @minLength 1 */
+  id: string;
+  /** @minLength 1 */
+  vehicleId: string;
+  /** @minLength 1 */
+  label: string;
+  /** @minimum 0 */
+  amount: number;
+  date: string;
+  /** @nullable */
+  category?: string | null;
+  /** @minimum 1 */
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Vehicle {
+  /** @minLength 1 */
+  id: string;
+  year: number;
+  /** @minLength 1 */
+  make: string;
+  /** @minLength 1 */
+  model: string;
+  engine: string;
+  fuel: string;
+  /** @minimum 0 */
+  mileage: number;
+  /** @minimum 0 */
+  purchasePrice: number;
+  status: VehicleStatus;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  salePrice?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  askingPrice?: number | null;
+  /** @nullable */
+  purchaseDate?: string | null;
+  /** @nullable */
+  vin?: string | null;
+  /** @nullable */
+  registration?: string | null;
+  /** @nullable */
+  location?: string | null;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  soldAt?: string | null;
+  expenses: Expense[];
+  /** @minimum 1 */
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type VehiclesResponse = Vehicle[];
+
+export type VehicleInputStatus = typeof VehicleInputStatus[keyof typeof VehicleInputStatus];
+
+
+export const VehicleInputStatus = {
+  active: 'active',
+  sold: 'sold',
+} as const;
+
+export interface ExpenseInput {
+  /** @minLength 1 */
+  id?: string;
+  /** @minLength 1 */
+  label: string;
+  /** @minimum 0 */
+  amount: number;
+  date: string;
+  category?: string;
+}
+
+export interface VehicleInput {
+  /** @minLength 1 */
+  id: string;
+  year: number;
+  /** @minLength 1 */
+  make: string;
+  /** @minLength 1 */
+  model: string;
+  engine: string;
+  fuel: string;
+  /** @minimum 0 */
+  mileage: number;
+  /** @minimum 0 */
+  purchasePrice: number;
+  status?: VehicleInputStatus;
+  /** @minimum 0 */
+  salePrice?: number;
+  /** @minimum 0 */
+  askingPrice?: number;
+  purchaseDate?: string;
+  vin?: string;
+  registration?: string;
+  location?: string;
+  source?: string;
+  notes?: string;
+  soldAt?: string;
+  expenses?: ExpenseInput[];
+}
+
+export type VehicleInputPartialStatus = typeof VehicleInputPartialStatus[keyof typeof VehicleInputPartialStatus];
+
+
+export const VehicleInputPartialStatus = {
+  active: 'active',
+  sold: 'sold',
+} as const;
+
+export interface VehicleInputPartial {
+  year?: number;
+  /** @minLength 1 */
+  make?: string;
+  /** @minLength 1 */
+  model?: string;
+  engine?: string;
+  fuel?: string;
+  /** @minimum 0 */
+  mileage?: number;
+  /** @minimum 0 */
+  purchasePrice?: number;
+  status?: VehicleInputPartialStatus;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  salePrice?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  askingPrice?: number | null;
+  /** @nullable */
+  purchaseDate?: string | null;
+  /** @nullable */
+  vin?: string | null;
+  /** @nullable */
+  registration?: string | null;
+  /** @nullable */
+  location?: string | null;
+  /** @nullable */
+  source?: string | null;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  soldAt?: string | null;
+}
+
+export type VehicleUpdate = VehicleInputPartial & {
+  /** @minimum 1 */
+  expectedVersion: number;
+};
+
+export interface ExpenseUpdate {
+  /** @minLength 1 */
+  label?: string;
+  /** @minimum 0 */
+  amount?: number;
+  date?: string;
+  /** @nullable */
+  category?: string | null;
+  /** @minimum 1 */
+  expectedVersion: number;
+}
+
+export type ExpenseImportItem = ExpenseInput & {
+  /** @minLength 1 */
+  id: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type VehicleImportItem = VehicleInput & {
+  createdAt: string;
+  expenses?: ExpenseImportItem[];
+};
+
+export interface VehicleImportInput {
+  /** @maxItems 1000 */
+  vehicles: VehicleImportItem[];
+}
+
+export type DonorStatus = typeof DonorStatus[keyof typeof DonorStatus];
+
+
+export const DonorStatus = {
+  active: 'active',
+  closed: 'closed',
+} as const;
+
+export interface Donor {
+  /** @minLength 1 */
+  id: string;
+  year: number;
+  /** @minLength 1 */
+  make: string;
+  /** @minLength 1 */
+  model: string;
+  engine: string;
+  fuel: string;
+  /** @minimum 0 */
+  mileage: number;
+  /** @minimum 0 */
+  purchasePrice: number;
+  status: DonorStatus;
+  /** @nullable */
+  location?: string | null;
+  /** @minimum 1 */
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DonorsResponse = Donor[];
+
+export type DonorInputStatus = typeof DonorInputStatus[keyof typeof DonorInputStatus];
+
+
+export const DonorInputStatus = {
+  active: 'active',
+  closed: 'closed',
+} as const;
+
+export interface DonorInput {
+  /** @minLength 1 */
+  id: string;
+  year: number;
+  /** @minLength 1 */
+  make: string;
+  /** @minLength 1 */
+  model: string;
+  engine: string;
+  fuel: string;
+  /** @minimum 0 */
+  mileage: number;
+  /** @minimum 0 */
+  purchasePrice: number;
+  status?: DonorInputStatus;
+  location?: string;
+  createdAt?: string;
+}
+
+export type DonorInputPartialStatus = typeof DonorInputPartialStatus[keyof typeof DonorInputPartialStatus];
+
+
+export const DonorInputPartialStatus = {
+  active: 'active',
+  closed: 'closed',
+} as const;
+
+export interface DonorInputPartial {
+  year?: number;
+  /** @minLength 1 */
+  make?: string;
+  /** @minLength 1 */
+  model?: string;
+  engine?: string;
+  fuel?: string;
+  /** @minimum 0 */
+  mileage?: number;
+  /** @minimum 0 */
+  purchasePrice?: number;
+  status?: DonorInputPartialStatus;
+  /** @nullable */
+  location?: string | null;
+}
+
+export type DonorUpdate = DonorInputPartial & {
+  /** @minimum 1 */
+  expectedVersion: number;
+};
+
+export interface DonorImportInput {
+  /** @maxItems 1000 */
+  donors: DonorInput[];
+}
+
+export type SyncSettingValue = { [key: string]: unknown };
+
+export interface SyncSetting {
+  key: string;
+  value: SyncSettingValue;
+  version: number;
+  updatedAt: string;
+}
+
+export type SyncSettingsResponse = SyncSetting[];
+
+export type SyncSettingInputValue = { [key: string]: unknown };
+
+export interface SyncSettingInput {
+  value: SyncSettingInputValue;
+  /** @minimum 1 */
+  expectedVersion?: number;
+}
+
+export type DeleteDonorParams = {
+/**
+ * Required when parts still reference this donor; parts stay visible as orphaned server records.
+ */
+preserveParts?: boolean;
+};
+

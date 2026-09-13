@@ -13,7 +13,7 @@ import {
   UpdatePartResponse,
 } from "@workspace/api-zod";
 import { db, partsTable } from "@workspace/db";
-import { desc, eq, inArray } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
@@ -65,29 +65,28 @@ router.post("/parts/import", async (req, res): Promise<void> => {
     return;
   }
 
-  const legacyIds = body.data.parts.map((part) => part.legacyId);
-  const existing = legacyIds.length
-    ? await db.select().from(partsTable).where(inArray(partsTable.legacyId, legacyIds))
-    : [];
-  const existingIds = new Set(existing.map((part) => part.legacyId));
-  const missing = body.data.parts.filter((part) => !existingIds.has(part.legacyId));
-
-  if (missing.length) {
-    await db.insert(partsTable).values(
-      missing.map((part) => ({
-        publicId: randomBytes(18).toString("base64url"),
-        legacyId: part.legacyId,
-        donorId: part.donorId,
-        donorLabel: part.donorLabel,
-        name: part.name,
-        code: part.code,
-        price: part.price.toFixed(2),
-        status: part.status,
-        location: part.location,
-        createdAt: part.createdAt,
-        soldAt: part.soldAt ?? null,
-      })),
-    );
+  // The unique legacy ID is the idempotency key.  Do not rely on a
+  // select-then-insert check here: two browsers can import the same old
+  // localStorage record at the same time.
+  if (body.data.parts.length) {
+    await db
+      .insert(partsTable)
+      .values(
+        body.data.parts.map((part) => ({
+          publicId: randomBytes(18).toString("base64url"),
+          legacyId: part.legacyId,
+          donorId: part.donorId,
+          donorLabel: part.donorLabel,
+          name: part.name,
+          code: part.code,
+          price: part.price.toFixed(2),
+          status: part.status,
+          location: part.location,
+          createdAt: part.createdAt,
+          soldAt: part.soldAt ?? null,
+        })),
+      )
+      .onConflictDoNothing({ target: partsTable.legacyId });
   }
 
   const rows = await db.select().from(partsTable).orderBy(desc(partsTable.createdAt));

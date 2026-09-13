@@ -1,12 +1,12 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createPart, deletePart as deletePartApi, importParts, listParts, updatePart as updatePartApi } from '@workspace/api-client-react';
 import type { Part as ApiPart } from '@workspace/api-client-react';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PartQrDialog } from '@/components/part-qr-dialog';
 import { PartStatusToggle } from '@/components/part-status-confirm-dialog';
 import { PublicPartPage } from '@/pages/public-part-page';
+import { useBusinessSync } from '@/hooks/use-business-sync';
 import {
   Activity,
   ArrowDownLeft,
@@ -54,6 +54,8 @@ type Vehicle = {
   notes?: string;
   createdAt: string;
   soldAt?: string;
+  version?: number;
+  updatedAt?: string;
 };
 type Part = {
   id: string;
@@ -81,123 +83,13 @@ type PartsCar = {
   parts: Part[];
   location?: string;
   createdAt: string;
+  version?: number;
+  updatedAt?: string;
 };
 
 const queryClient = new QueryClient();
-const VEHICLES_KEY = 'rm-automotive-vehicles-v1';
-const PARTS_KEY = 'rm-automotive-partscars-v1';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const can = (_permission: string): boolean => true;
-
-const seedVehicles: Vehicle[] = [
-  {
-    id: 'veh-audi',
-    year: 2014,
-    make: 'Audi',
-    model: 'A4 Avant',
-    engine: '2.0 TDI · 110 kW',
-    fuel: 'Dyzelinas',
-    mileage: 226400,
-    purchasePrice: 5450,
-    expenses: [
-      { id: 'exp-audi-1', label: 'Sankabos komplektas', amount: 380, date: '2024-05-14' },
-      { id: 'exp-audi-2', label: 'Kėbulo paruošimas', amount: 215, date: '2024-05-18' },
-    ],
-    status: 'active',
-    askingPrice: 7200,
-    purchaseDate: '2024-05-08',
-    registration: 'ABC 412',
-    location: 'Aikštelė A',
-    source: 'Vokietija',
-    createdAt: '2024-05-08',
-  },
-  {
-    id: 'veh-bmw',
-    year: 2011,
-    make: 'BMW',
-    model: '320d Touring',
-    engine: '2.0 · 135 kW',
-    fuel: 'Dyzelinas',
-    mileage: 281800,
-    purchasePrice: 4200,
-    expenses: [
-      { id: 'exp-bmw-1', label: 'Techninė apžiūra', amount: 42, date: '2024-04-12' },
-      { id: 'exp-bmw-2', label: 'Padangos', amount: 260, date: '2024-04-16' },
-    ],
-    status: 'sold',
-    salePrice: 5850,
-    purchaseDate: '2024-04-09',
-    registration: 'KLM 320',
-    location: 'Parduota',
-    createdAt: '2024-04-09',
-    soldAt: '2024-05-02',
-  },
-  {
-    id: 'veh-volvo',
-    year: 2016,
-    make: 'Volvo',
-    model: 'V60 D4',
-    engine: '2.0 · 140 kW',
-    fuel: 'Dyzelinas',
-    mileage: 194600,
-    purchasePrice: 7900,
-    expenses: [],
-    status: 'active',
-    askingPrice: 10400,
-    purchaseDate: '2024-05-23',
-    registration: 'HJK 608',
-    location: 'Aikštelė B',
-    source: 'Lietuva',
-    createdAt: '2024-05-23',
-  },
-];
-
-const seedPartsCars: PartsCar[] = [
-  {
-    id: 'parts-vw',
-    year: 2010,
-    make: 'Volkswagen',
-    model: 'Passat B6',
-    engine: '2.0 TDI · 103 kW',
-    fuel: 'Dyzelinas',
-    mileage: 318000,
-    purchasePrice: 1680,
-    status: 'active',
-    createdAt: '2024-05-11',
-    parts: [
-      { id: 'part-vw-1', name: 'Priekinis kairės pusės žibintas', code: '3C1941005', price: 95, status: 'sold', createdAt: '2024-05-13' },
-      { id: 'part-vw-2', name: 'RNS navigacija', code: '3C0035684', price: 170, status: 'inventory', createdAt: '2024-05-13' },
-      { id: 'part-vw-3', name: 'Kuro purkštukas', code: '03G130073', price: 120, status: 'inventory', createdAt: '2024-05-15' },
-      { id: 'part-vw-4', name: 'Galinės durys, dešinė', code: '3C0833056', price: 140, status: 'inventory', createdAt: '2024-05-17' },
-    ],
-  },
-  {
-    id: 'parts-opel',
-    year: 2013,
-    make: 'Opel',
-    model: 'Astra J',
-    engine: '1.7 CDTI · 81 kW',
-    fuel: 'Dyzelinas',
-    mileage: 246500,
-    purchasePrice: 920,
-    status: 'active',
-    createdAt: '2024-05-27',
-    parts: [],
-  },
-];
-
-function uid(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function readStored<T>(key: string, fallback: T): T {
-  try {
-    const value = localStorage.getItem(key);
-    return value ? JSON.parse(value) as T : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function money(value: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 2 }).format(value);
@@ -209,22 +101,6 @@ function shortDate(value: string) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function apiPartToPart(part: ApiPart): Part {
-  return {
-    id: String(part.id),
-    dbId: part.id,
-    publicId: part.publicId,
-    name: part.name,
-    code: part.code,
-    price: part.price,
-    status: part.status,
-    location: part.location ?? undefined,
-    createdAt: part.createdAt,
-    soldAt: part.soldAt ?? undefined,
-    updatedAt: part.updatedAt,
-  };
 }
 
 function partUrl(publicId: string) {
@@ -245,91 +121,34 @@ function vehicleCost(vehicle: Vehicle) {
 
 function AppShell() {
   const [location, setLocation] = useLocation();
-  const [vehicles, setVehicles] = useState<Vehicle[]>(() => readStored(VEHICLES_KEY, seedVehicles));
-  const [partsCars, setPartsCars] = useState<PartsCar[]>(() => readStored(PARTS_KEY, seedPartsCars));
+  const {
+    vehicles,
+    partsCars,
+    serverParts,
+    syncError,
+    loading,
+    refreshing,
+    pending,
+    refresh,
+    saveVehicle: saveVehicleRecord,
+    addExpense: addExpenseRecord,
+    markSold: markSoldRecord,
+    deleteVehicle: deleteVehicleRecord,
+    saveDonor: saveDonorRecord,
+    deleteDonor: deleteDonorRecord,
+    addPart: addPartRecord,
+    togglePart: togglePartRecord,
+    updatePart: updatePartRecord,
+    deletePart: deletePartRecord,
+  } = useBusinessSync();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modal, setModal] = useState<'vehicle' | 'expense' | 'sell' | 'partsCar' | 'part' | null>(null);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>();
   const [selectedPartsCarId, setSelectedPartsCarId] = useState<string>();
   const [selectedPartId, setSelectedPartId] = useState<string>();
   const [toast, setToast] = useState<string>();
-  const [serverParts, setServerParts] = useState<ApiPart[]>([]);
-  const [partsSyncError, setPartsSyncError] = useState<string>();
+  const partsSyncError = syncError;
   const [partsPageResetToken, setPartsPageResetToken] = useState(0);
-  const partsMutationGeneration = useRef(0);
-  const pendingPartMutations = useRef(0);
-  const partsSyncRequest = useRef(0);
-  const partsSyncNeedsRefresh = useRef(false);
-  const syncPartsRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => localStorage.setItem(VEHICLES_KEY, JSON.stringify(vehicles)), [vehicles]);
-  useEffect(() => localStorage.setItem(PARTS_KEY, JSON.stringify(partsCars)), [partsCars]);
-  useEffect(() => {
-    let cancelled = false;
-
-    async function syncParts() {
-      const requestId = ++partsSyncRequest.current;
-      const generationAtRequest = partsMutationGeneration.current;
-      try {
-        const legacyParts = partsCars.flatMap((car) =>
-          car.parts
-            .filter((part) => !part.dbId)
-            .map((part) => ({
-              legacyId: part.id,
-              donorId: car.id,
-              donorLabel: `${car.year} ${car.make} ${car.model}`,
-              name: part.name,
-              code: part.code,
-              price: part.price,
-              status: part.status,
-              ...(part.location ? { location: part.location } : {}),
-              createdAt: new Date(part.createdAt).toISOString(),
-              ...(part.soldAt ? { soldAt: new Date(part.soldAt).toISOString() } : {}),
-            })),
-        );
-        const serverParts = legacyParts.length
-          ? await importParts({ parts: legacyParts })
-          : await listParts();
-        if (cancelled || requestId !== partsSyncRequest.current) return;
-        if (partsMutationGeneration.current !== generationAtRequest || pendingPartMutations.current > 0) {
-          partsSyncNeedsRefresh.current = true;
-          if (pendingPartMutations.current === 0) {
-            partsSyncNeedsRefresh.current = false;
-            void syncParts();
-          }
-          return;
-        }
-        setServerParts(serverParts);
-        setPartsCars((current) => current.map((car) => ({
-          ...car,
-          parts: serverParts.filter((part) => part.donorId === car.id).map(apiPartToPart),
-        })));
-        setPartsSyncError(undefined);
-      } catch (error) {
-        if (cancelled || requestId !== partsSyncRequest.current) return;
-        if (partsMutationGeneration.current !== generationAtRequest || pendingPartMutations.current > 0) {
-          partsSyncNeedsRefresh.current = true;
-          if (pendingPartMutations.current === 0) {
-            partsSyncNeedsRefresh.current = false;
-            void syncParts();
-          }
-          return;
-        }
-        const message = error instanceof Error ? error.message : 'Nepavyko sinchronizuoti detalių.';
-        setPartsSyncError(message);
-        flash(message);
-      }
-    }
-
-    syncPartsRef.current = () => {
-      void syncParts();
-    };
-    void syncParts();
-    return () => {
-      cancelled = true;
-      syncPartsRef.current = null;
-    };
-  }, []);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(undefined), 2800);
@@ -369,19 +188,6 @@ function AppShell() {
     setToast(message);
   }
 
-  function beginPartMutation() {
-    partsMutationGeneration.current += 1;
-    pendingPartMutations.current += 1;
-  }
-
-  function finishPartMutation() {
-    pendingPartMutations.current = Math.max(0, pendingPartMutations.current - 1);
-    if (pendingPartMutations.current === 0 && partsSyncNeedsRefresh.current) {
-      partsSyncNeedsRefresh.current = false;
-      syncPartsRef.current?.();
-    }
-  }
-
   const unmatchedServerParts = useMemo(() => {
     const localDonorIds = new Set(partsCars.map((car) => car.id));
     return serverParts.filter((part) => !localDonorIds.has(part.donorId));
@@ -394,130 +200,93 @@ function AppShell() {
     if (name === 'part') setSelectedPartId(partId);
   }
 
-  function saveVehicle(payload: Omit<Vehicle, 'id' | 'createdAt' | 'expenses' | 'status'> & { id?: string }) {
-    if (payload.id) {
-      setVehicles((current) => current.map((vehicle) => vehicle.id === payload.id ? { ...vehicle, ...payload } : vehicle));
-      flash('Automobilio duomenys atnaujinti');
-    } else {
-      setVehicles((current) => [{ ...payload, id: uid('veh'), createdAt: today(), expenses: [], status: 'active' }, ...current]);
-      flash('Automobilis pridėtas į knygą');
-    }
+  async function saveVehicle(payload: Omit<Vehicle, 'id' | 'createdAt' | 'expenses' | 'status'> & { id?: string }) {
+    await saveVehicleRecord(payload);
     setModal(null);
+    flash(payload.id ? 'Automobilio duomenys atnaujinti' : 'Automobilis pridėtas į knygą');
   }
 
-  function addExpense(vehicleId: string, payload: Omit<Expense, 'id'>) {
-    setVehicles((current) => current.map((vehicle) => vehicle.id === vehicleId ? { ...vehicle, expenses: [...vehicle.expenses, { ...payload, id: uid('exp') }] } : vehicle));
+  async function addExpense(vehicleId: string, payload: Omit<Expense, 'id'>) {
+    await addExpenseRecord(vehicleId, payload);
     setModal(null);
     flash('Išlaidos įrašytos');
   }
 
-  function markSold(vehicleId: string, salePrice: number) {
-    setVehicles((current) => current.map((vehicle) => vehicle.id === vehicleId ? { ...vehicle, status: 'sold', salePrice, soldAt: today() } : vehicle));
+  async function markSold(vehicleId: string, salePrice: number, expectedVersion?: number) {
+    await markSoldRecord(vehicleId, salePrice, expectedVersion);
     setModal(null);
     flash('Automobilis pažymėtas kaip parduotas');
   }
 
-  function deleteVehicle(id: string) {
+  async function deleteVehicle(id: string) {
     if (!window.confirm('Pašalinti šį automobilį ir visas jo išlaidas?')) return;
-    setVehicles((current) => current.filter((vehicle) => vehicle.id !== id));
-    flash('Automobilis pašalintas');
+    try {
+      await deleteVehicleRecord(id);
+      flash('Automobilis pašalintas');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Automobilio pašalinti nepavyko.');
+    }
   }
 
-  function savePartsCar(payload: Omit<PartsCar, 'id' | 'createdAt' | 'parts' | 'status'> & { id?: string }) {
-    if (payload.id) {
-      setPartsCars((current) => current.map((car) => car.id === payload.id ? { ...car, ...payload } : car));
-      flash('Donoro duomenys atnaujinti');
-    } else {
-      setPartsCars((current) => [{ ...payload, id: uid('parts'), createdAt: today(), parts: [], status: 'active' }, ...current]);
+  async function savePartsCar(payload: Omit<PartsCar, 'id' | 'createdAt' | 'parts' | 'status'> & { id?: string }) {
+    await saveDonorRecord(payload);
+    if (!payload.id) {
       setPartsPageResetToken((token) => token + 1);
       setLocation('/dalys');
-      flash('Donoras pridėtas');
     }
     setModal(null);
+    flash(payload.id ? 'Donoro duomenys atnaujinti' : 'Donoras pridėtas');
   }
 
   async function addPart(carId: string, payload: Pick<Part, 'name' | 'code' | 'price' | 'location'>): Promise<void> {
-    const car = partsCars.find((item) => item.id === carId);
-    if (!car) throw new Error('Donoras nerastas.');
-    beginPartMutation();
-    try {
-      const created = await createPart({
-        donorId: car.id,
-        donorLabel: `${car.year} ${car.make} ${car.model}`,
-        name: payload.name,
-        code: payload.code,
-        price: payload.price,
-        ...(payload.location ? { location: payload.location } : {}),
-      });
-      setPartsCars((current) => current.map((item) => item.id === carId ? { ...item, parts: [...item.parts, apiPartToPart(created)] } : item));
-      setServerParts((current) => [...current.filter((part) => part.id !== created.id), created]);
-      setPartsSyncError(undefined);
-      setModal(null);
-      setPartsPageResetToken((token) => token + 1);
-      setLocation('/dalys');
-      flash('Detalė pridėta — nuolatinis QR kodas sukurtas');
-    } finally {
-      finishPartMutation();
-    }
+    await addPartRecord(carId, payload);
+    setModal(null);
+    setPartsPageResetToken((token) => token + 1);
+    setLocation('/dalys');
+    flash('Detalė pridėta — nuolatinis QR kodas sukurtas');
   }
 
   async function togglePart(carId: string, partId: string): Promise<boolean> {
-    const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
-    if (!part?.dbId) return false;
-    beginPartMutation();
     try {
-      const updated = await updatePartApi(part.dbId, { status: part.status === 'inventory' ? 'sold' : 'inventory' });
-      setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.map((item) => item.id === partId ? apiPartToPart(updated) : item) } : car));
-      setServerParts((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setPartsSyncError(undefined);
+      await togglePartRecord(carId, partId);
       flash('Detalės būsena atnaujinta');
       return true;
     } catch {
       flash('Būsenos pakeisti nepavyko.');
       return false;
-    } finally {
-      finishPartMutation();
     }
   }
 
   async function updatePart(carId: string, partId: string, payload: Pick<Part, 'name' | 'code' | 'price' | 'location'>): Promise<void> {
-    const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
-    if (!part?.dbId) throw new Error('Detalė nerasta.');
-    beginPartMutation();
-    try {
-      const updated = await updatePartApi(part.dbId, { ...payload, location: payload.location ?? null });
-      setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.map((item) => item.id === partId ? apiPartToPart(updated) : item) } : car));
-      setServerParts((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setPartsSyncError(undefined);
-      setModal(null);
-      flash('Detalės duomenys atnaujinti — QR kodas nepasikeitė');
-    } finally {
-      finishPartMutation();
-    }
+    await updatePartRecord(carId, partId, payload);
+    setModal(null);
+    flash('Detalės duomenys atnaujinti — QR kodas nepasikeitė');
   }
 
   async function deletePart(carId: string, partId: string) {
     if (!window.confirm('Pašalinti šią detalę iš sandėlio?')) return;
-    const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
-    if (!part?.dbId) return;
-    beginPartMutation();
     try {
-      await deletePartApi(part.dbId);
-      setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.filter((item) => item.id !== partId) } : car));
-      setServerParts((current) => current.filter((item) => item.id !== part.dbId));
-      setPartsSyncError(undefined);
+      await deletePartRecord(carId, partId);
       flash('Detalė pašalinta');
     } catch (error) {
       flash(error instanceof Error ? error.message : 'Detalės pašalinti nepavyko.');
-    } finally {
-      finishPartMutation();
     }
   }
 
-  function deletePartsCar(id: string) {
-    if (!window.confirm('Pašalinti donorą ir visas jo detales?')) return;
-    setPartsCars((current) => current.filter((car) => car.id !== id));
-    flash('Donoras pašalintas');
+  async function deletePartsCar(id: string) {
+    const donor = partsCars.find((car) => car.id === id);
+    if (!donor) return;
+    const hasParts = donor.parts.length > 0 || serverParts.some((part) => part.donorId === id);
+    const message = hasParts
+      ? 'Šis donoras turi detalių. Pašalinti tik donorą ir palikti visas detales serveryje kaip našlaičius? Šio veiksmo negalima automatiškai atšaukti.'
+      : 'Pašalinti šį donorą?';
+    if (!window.confirm(message)) return;
+    try {
+      await deleteDonorRecord(id, hasParts);
+      flash('Donoras pašalintas');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Donoro pašalinti nepavyko.');
+    }
   }
 
   const page: PageName = location === '/automobiliai' ? 'vehicles' : location === '/dalys' ? 'parts' : location === '/nustatymai' ? 'settings' : 'dashboard';
@@ -532,15 +301,18 @@ function AppShell() {
             <div className="flex items-center gap-2 sm:hidden"><span className="font-mono-ui text-[11px] font-bold tracking-[0.14em]">RM</span><span className="text-muted-foreground">/</span><span className="text-sm font-semibold">{page === 'dashboard' ? 'Pagrindinis' : page === 'vehicles' ? 'Automobiliai' : page === 'parts' ? 'Dalys' : 'Nustatymai'}</span></div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className="h-1.5 w-1.5 rounded-full bg-secondary" /> Dalys: PostgreSQL · automobiliai ir donorai: naršyklė</div>
+             <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className={`h-1.5 w-1.5 rounded-full ${syncError ? 'bg-destructive' : pending > 0 || refreshing ? 'animate-pulse bg-primary' : 'bg-secondary'}`} /> Duomenys: PostgreSQL {pending > 0 ? `· saugoma (${pending})` : refreshing ? '· atnaujinama' : '· sinchronizuota'}</div>
             <button className="relative rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Pranešimai" data-testid="button-notifications"><Bell size={18} /><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" /></button>
           </div>
         </header>
-        <div className="app-shell min-h-[calc(100dvh-72px)] p-5 sm:p-8">
-          {page === 'dashboard' && <Dashboard totals={totals} activity={activity} vehicles={vehicles} partsCars={partsCars} navigate={setLocation} can={can} />}
-          {page === 'vehicles' && <VehiclesPage vehicles={vehicles} openModal={openModal} deleteVehicle={deleteVehicle} can={can} />}
-          {page === 'parts' && <PartsPage partsCars={partsCars} unmatchedParts={unmatchedServerParts} syncError={partsSyncError} resetToken={partsPageResetToken} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />}
-          {page === 'settings' && <SettingsPage />}
+         <div className="app-shell min-h-[calc(100dvh-72px)] p-5 sm:p-8">
+           {syncError && <div className="mx-auto mb-5 flex max-w-[1480px] flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert" data-testid="status-business-sync-error"><div><p className="font-semibold">Bendrų duomenų veiksmo atlikti nepavyko.</p><p className="mt-1 text-xs leading-5">{syncError} Vietinė kopija nepateikiama kaip pakaitalas.</p></div><button onClick={() => void refresh()} className="w-fit rounded-lg border border-destructive/30 px-3 py-2 text-xs font-bold hover:bg-destructive/10" data-testid="button-retry-business-sync">Bandyti dar kartą</button></div>}
+           {loading ? <div className="mx-auto max-w-[1480px] rounded-xl border border-dashed border-border bg-card/55 px-6 py-20 text-center" aria-busy="true" data-testid="status-business-loading"><p className="text-sm font-semibold">Kraunami bendri duomenys…</p><p className="mt-2 text-xs text-muted-foreground">Tikriname PostgreSQL įrašus ir išsaugome seną naršyklės knygą be trynimo.</p></div> : <>
+             {page === 'dashboard' && <Dashboard totals={totals} activity={activity} vehicles={vehicles} partsCars={partsCars} navigate={setLocation} can={can} />}
+             {page === 'vehicles' && <VehiclesPage vehicles={vehicles} openModal={openModal} deleteVehicle={deleteVehicle} can={can} />}
+             {page === 'parts' && <PartsPage partsCars={partsCars} unmatchedParts={unmatchedServerParts} syncError={partsSyncError} resetToken={partsPageResetToken} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />}
+             {page === 'settings' && <SettingsPage />}
+           </>}
         </div>
       </main>
       {modal === 'vehicle' && <VehicleModal vehicle={vehicles.find((vehicle) => vehicle.id === selectedVehicleId)} close={() => setModal(null)} save={saveVehicle} />}
@@ -620,7 +392,7 @@ function Dashboard({ totals, activity, vehicles, partsCars, navigate, can }: Das
            <div className="flex flex-col gap-4 border-b border-border px-5 py-5 sm:px-6 md:flex-row md:items-end md:justify-between"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Pinigų srautas</p><h2 className="mt-1 text-lg font-bold">Visa istorija</h2></div><div className="flex items-center gap-1 rounded-lg border border-border bg-background p-1" role="group" aria-label="Istorijos filtras">{(['all', 'in', 'out'] as const).map((option) => <button key={option} onClick={() => setHistoryFilter(option)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-bold transition-colors ${historyFilter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-history-${option}`}>{option === 'all' ? 'Visos' : option === 'in' ? 'Įplaukos' : 'Išlaidos'}</button>)}</div></div>
            <div className="overflow-x-auto scrollbar-thin"><table className="w-full min-w-[560px] text-left"><thead><tr className="border-b border-border/80 text-[10px] uppercase tracking-[0.14em] text-muted-foreground"><th className="px-5 py-3 font-mono-ui sm:px-6">Data</th><th className="px-3 py-3 font-mono-ui">Įrašas</th><th className="px-3 py-3 font-mono-ui">Tipas</th><th className="px-5 py-3 text-right font-mono-ui sm:px-6">Suma</th></tr></thead><tbody>{visibleActivity.map((row) => <tr key={row.id} className="border-b border-border/60 last:border-0 transition-colors hover:bg-muted/35" data-testid={`row-activity-${row.id}`}><td className="whitespace-nowrap px-5 py-4 text-xs text-muted-foreground sm:px-6">{shortDate(row.date)}</td><td className="px-3 py-4"><p className="text-sm font-semibold">{row.label}</p><p className="mt-0.5 text-xs text-muted-foreground">{row.detail}</p></td><td className="px-3 py-4"><span className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${row.kind === 'in' ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'}`}>{row.kind === 'in' ? 'Įplaukos' : 'Išlaidos'}</span></td><td className={`whitespace-nowrap px-5 py-4 text-right font-mono-ui text-sm font-bold sm:px-6 ${row.kind === 'in' ? 'text-secondary' : 'text-foreground'}`}>{row.amount > 0 ? '+' : '−'} {money(Math.abs(row.amount))}</td></tr>)}</tbody></table></div>
            {visibleActivity.length === 0 && <EmptyState title="Kol kas nėra pinigų įrašų" body="Pridėk pirmą automobilį, kad pradėtum sekti srautą." />}
-           <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-6"><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{filteredActivity.length} įrašai · vietinė knyga</span>{filteredActivity.length > 10 && <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-xs font-bold text-secondary hover:underline" data-testid="button-toggle-history">{showAllHistory ? 'Rodyti mažiau' : `Rodyti visus (${filteredActivity.length})`}</button>}</div>
+           <div className="flex items-center justify-between gap-3 border-t border-border px-5 py-4 sm:px-6"><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{filteredActivity.length} įrašai · PostgreSQL</span>{filteredActivity.length > 10 && <button onClick={() => setShowAllHistory(!showAllHistory)} className="text-xs font-bold text-secondary hover:underline" data-testid="button-toggle-history">{showAllHistory ? 'Rodyti mažiau' : `Rodyti visus (${filteredActivity.length})`}</button>}</div>
         </div>
         <div className="space-y-6">
           <div className="rounded-xl border border-border bg-foreground p-5 text-background shadow-sm reveal reveal-delay-2 sm:p-6"><div className="flex items-center justify-between"><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-background/45">Dabar dirbtuvėse</p><Gauge size={17} className="text-primary" /></div><div className="mt-6 grid grid-cols-2 gap-5"><div><p className="text-3xl font-bold">{vehicles.filter((v) => v.status === 'active').length}</p><p className="mt-1 text-xs text-background/55">automobiliai</p></div><div><p className="text-3xl font-bold">{partsCars.length}</p><p className="mt-1 text-xs text-background/55">ardomi donorai</p></div></div><div className="mt-6 border-t border-background/15 pt-4"><div className="flex justify-between text-xs"><span className="text-background/55">Turto vertė sandėlyje</span><span className="font-mono-ui text-primary">{money(inventoryValue)}</span></div></div></div>
@@ -670,7 +442,7 @@ function PartsPage({ partsCars, unmatchedParts, syncError, resetToken, openModal
   const inventoryCount = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'inventory').length, 0) + unmatchedParts.filter((part) => part.status === 'inventory').length;
   const soldCount = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'sold').length, 0) + unmatchedParts.filter((part) => part.status === 'sold').length;
   const hasResults = filtered.length > 0 || filteredUnmatchedParts.length > 0;
-  return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 02" title="Dalys" body="Donorai kelyje į antrą gyvenimą. Parduotų detalių pinigai grįžta į knygą." action={can('manageDonors') ? <Plus size={17} /> : undefined} actionLabel="Pridėti donorą" onAction={can('manageDonors') ? () => openModal('partsCar') : undefined} />{syncError && <div className="mb-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert" data-testid="status-parts-sync-error"><p className="font-semibold">Detalių iš serverio įkelti nepavyko.</p><p className="mt-1 text-xs leading-5">Vietiniai donorai ir automobiliai saugomi tik šios naršyklės vietinėje saugykloje, todėl kitose naršyklėse ar įrenginiuose esančios detalės gali būti nerodomos. {syncError}</p></div>}<div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti donorų..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-parts" /></label><div className="flex items-center justify-between gap-3"><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'inventory', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-parts-${option}`}>{option === 'all' ? 'Visi' : option === 'inventory' ? 'Sandėlyje' : 'Parduotos'}</button>)}</div><span className="hidden font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:block">{inventoryCount} sandėlyje · {soldCount} parduotos</span></div></div>{filteredUnmatchedParts.length > 0 && <UnmatchedPartsSection parts={filteredUnmatchedParts} />}{filtered.length === 0 ? (hasResults ? null : <EmptyState title="Donorų neradome" body="Pridėk automobilį ardymui arba pakeisk paiešką. Donorai saugomi šios naršyklės vietinėje saugykloje." action={can('manageDonors') ? <button onClick={() => openModal('partsCar')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-donor"><Plus size={16} /> Pridėti donorą</button> : undefined} />) : <div className="space-y-5">{filtered.map((car, index) => <PartsCarCard key={car.id} car={car} index={index} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />)}</div>}</section>;
+   return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 02" title="Dalys" body="Donorai kelyje į antrą gyvenimą. Parduotų detalių pinigai grįžta į knygą." action={can('manageDonors') ? <Plus size={17} /> : undefined} actionLabel="Pridėti donorą" onAction={can('manageDonors') ? () => openModal('partsCar') : undefined} />{syncError && <div className="mb-5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert" data-testid="status-parts-sync-error"><p className="font-semibold">Detalių sinchronizacija nepavyko.</p><p className="mt-1 text-xs leading-5">Serverio duomenys nerodomi vietoje pakaitinės senos naršyklės kopijos. Pabandykite sinchronizaciją dar kartą viršuje. {syncError}</p></div>}<div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti donorų..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-parts" /></label><div className="flex items-center justify-between gap-3"><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'inventory', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-parts-${option}`}>{option === 'all' ? 'Visi' : option === 'inventory' ? 'Sandėlyje' : 'Parduotos'}</button>)}</div><span className="hidden font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:block">{inventoryCount} sandėlyje · {soldCount} parduotos</span></div></div>{filteredUnmatchedParts.length > 0 && <UnmatchedPartsSection parts={filteredUnmatchedParts} />}{filtered.length === 0 ? (hasResults ? null : <EmptyState title="Donorų neradome" body="Pridėk automobilį ardymui arba pakeisk paiešką. Donorai saugomi PostgreSQL duomenų bazėje." action={can('manageDonors') ? <button onClick={() => openModal('partsCar')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-donor"><Plus size={16} /> Pridėti donorą</button> : undefined} />) : <div className="space-y-5">{filtered.map((car, index) => <PartsCarCard key={car.id} car={car} index={index} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />)}</div>}</section>;
 }
 
 function UnmatchedPartsSection({ parts }: { parts: ApiPart[] }) {
@@ -886,7 +658,7 @@ function SettingsPage() {
     <div className="mb-8">
       <p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">Sistema / 03</p>
       <h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Nustatymai<span className="text-primary">.</span></h1>
-      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Paprasta, atvira darbo erdvė be prisijungimo ir darbuotojų paskyrų.</p>
+       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Paprasta, atvira darbo erdvė be prisijungimo ir darbuotojų paskyrų. Verslo įrašai sinchronizuojami iš PostgreSQL.</p>
     </div>
     <div className="grid gap-5 md:grid-cols-2">
       <article className="rounded-xl border border-secondary/30 bg-secondary/10 p-5 shadow-sm sm:p-6">
@@ -894,10 +666,10 @@ function SettingsPage() {
         <h2 className="mt-2 text-xl font-bold">Prisijungti nereikia</h2>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">Visi, kurie atidaro RM Automotive, gali peržiūrėti ir tvarkyti automobilius, donorus bei detales. Prisijungimo, darbuotojų paskyrų ir atskirų leidimų čia nėra.</p>
       </article>
-      <article className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+       <article className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
         <p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Duomenų saugykla</p>
         <h2 className="mt-2 text-xl font-bold">Kur saugomi duomenys?</h2>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">Dalys saugomos PostgreSQL duomenų bazėje. Automobilių ir donorų duomenys saugomi šios naršyklės vietinėje saugykloje.</p>
+         <p className="mt-3 text-sm leading-6 text-muted-foreground">Automobiliai, donorai, išlaidos, pardavimai ir detalės saugomi PostgreSQL. Naršyklės saugykla naudojama tik vienkartiniam senų įrašų importui ir nešalinama.</p>
       </article>
     </div>
   </section>;
@@ -918,28 +690,32 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
 const inputClass = 'h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20';
 const selectClass = `${inputClass} appearance-none`;
 
-function VehicleModal({ vehicle, close, save }: { vehicle?: Vehicle; close: () => void; save: (payload: Omit<Vehicle, 'id' | 'createdAt' | 'expenses' | 'status'> & { id?: string }) => void }) {
+function VehicleModal({ vehicle, close, save }: { vehicle?: Vehicle; close: () => void; save: (payload: Omit<Vehicle, 'id' | 'createdAt' | 'expenses' | 'status'> & { id?: string }) => Promise<void> }) {
   const [form, setForm] = useState({ year: String(vehicle?.year ?? 2020), make: vehicle?.make ?? '', model: vehicle?.model ?? '', engine: vehicle?.engine ?? '', fuel: vehicle?.fuel ?? 'Dyzelinas', mileage: String(vehicle?.mileage ?? ''), purchasePrice: String(vehicle?.purchasePrice ?? ''), askingPrice: String(vehicle?.askingPrice ?? ''), purchaseDate: vehicle?.purchaseDate ?? vehicle?.createdAt ?? today(), vin: vehicle?.vin ?? '', registration: vehicle?.registration ?? '', location: vehicle?.location ?? 'Aikštelė', source: vehicle?.source ?? '', notes: vehicle?.notes ?? '' });
-  function submit(event: FormEvent) { event.preventDefault(); save({ ...form, id: vehicle?.id, year: Number(form.year), mileage: Number(form.mileage), purchasePrice: Number(form.purchasePrice), askingPrice: form.askingPrice ? Number(form.askingPrice) : undefined, purchaseDate: form.purchaseDate || undefined }); }
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); if (saving) return; setSaving(true); try { await save({ ...form, id: vehicle?.id, version: vehicle?.version, year: Number(form.year), mileage: Number(form.mileage), purchasePrice: Number(form.purchasePrice), askingPrice: form.askingPrice ? Number(form.askingPrice) : undefined, purchaseDate: form.purchaseDate || undefined }); } catch (error) { window.alert(error instanceof Error ? error.message : 'Automobilio išsaugoti nepavyko.'); } finally { setSaving(false); } }
   return <Modal title={vehicle ? 'Redaguoti automobilį' : 'Naujas automobilis'} eyebrow={vehicle ? 'Atnaujinti įrašą' : 'Pirkimo žurnalas'} close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6"><div className="sm:col-span-2 rounded-lg border border-secondary/20 bg-accent/45 px-3 py-2.5 text-xs leading-5 text-accent-foreground">Kuo tiksliau suvesk pirkimo duomenis — vėliau savikaina ir marža bus paskaičiuotos automatiškai.</div><Field label="Metai"><input required type="number" min="1950" max="2030" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} className={inputClass} data-testid="input-vehicle-year" /></Field><Field label="Pirkimo data"><input required type="date" value={form.purchaseDate} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className={inputClass} data-testid="input-vehicle-purchase-date" /></Field><Field label="Markė"><input required value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} className={inputClass} placeholder="pvz. Audi" data-testid="input-vehicle-make" /></Field><Field label="Modelis"><input required value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} placeholder="pvz. A4 Avant" data-testid="input-vehicle-model" /></Field><Field label="Variklis"><input required value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} className={inputClass} placeholder="pvz. 2.0 TDI · 110 kW" data-testid="input-vehicle-engine" /></Field><Field label="Kuras"><div className="relative"><select value={form.fuel} onChange={(e) => setForm({ ...form, fuel: e.target.value })} className={selectClass} data-testid="select-vehicle-fuel"><option>Dyzelinas</option><option>Benzinas</option><option>Hibridas</option><option>Elektra</option><option>Dujos</option></select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-muted-foreground" /></div></Field><Field label="Rida, km"><input required type="number" min="0" value={form.mileage} onChange={(e) => setForm({ ...form, mileage: e.target.value })} className={inputClass} data-testid="input-vehicle-mileage" /></Field><Field label="Pirkimo kaina, EUR"><input required type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} className={inputClass} placeholder="0,00" data-testid="input-vehicle-purchase-price" /></Field><Field label="Tikslinė pardavimo kaina, EUR"><input type="number" min="0" step="0.01" value={form.askingPrice} onChange={(e) => setForm({ ...form, askingPrice: e.target.value })} className={inputClass} placeholder="Neprivaloma" data-testid="input-vehicle-asking-price" /></Field><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Aikštelė A" data-testid="input-vehicle-location" /></Field><Field label="Valstybinis numeris"><input value={form.registration} onChange={(e) => setForm({ ...form, registration: e.target.value.toUpperCase() })} className={inputClass} placeholder="ABC 123" data-testid="input-vehicle-registration" /></Field><Field label="VIN kodas"><input value={form.vin} onChange={(e) => setForm({ ...form, vin: e.target.value.toUpperCase() })} className={inputClass} placeholder="17 simbolių" data-testid="input-vehicle-vin" /></Field><Field label="Pirkta iš"><input value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })} className={inputClass} placeholder="pvz. Vokietija / privatus" data-testid="input-vehicle-source" /></Field><Field label="Pastabos" wide><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={`${inputClass} h-20 py-2.5`} placeholder="Defektai, susitarimai, dokumentai..." data-testid="input-vehicle-notes" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4 sm:col-span-2"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-vehicle">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-vehicle">{vehicle ? 'Išsaugoti pakeitimus' : 'Pridėti automobilį'}</button></div></form></Modal>;
 }
 
-function ExpenseModal({ vehicle, close, save }: { vehicle?: Vehicle; close: () => void; save: (vehicleId: string, payload: Omit<Expense, 'id'>) => void }) {
+function ExpenseModal({ vehicle, close, save }: { vehicle?: Vehicle; close: () => void; save: (vehicleId: string, payload: Omit<Expense, 'id'>) => Promise<void> }) {
   const [form, setForm] = useState({ label: '', amount: '', date: today(), category: 'Remontas' });
-  function submit(event: FormEvent) { event.preventDefault(); if (vehicle) save(vehicle.id, { label: form.label, amount: Number(form.amount), date: form.date, category: form.category }); }
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); if (!vehicle || saving) return; setSaving(true); try { await save(vehicle.id, { label: form.label, amount: Number(form.amount), date: form.date, category: form.category }); } catch (error) { window.alert(error instanceof Error ? error.message : 'Išlaidų išsaugoti nepavyko.'); } finally { setSaving(false); } }
   return <Modal title="Pridėti išlaidas" eyebrow={`${vehicle?.make ?? ''} ${vehicle?.model ?? ''}`} close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:p-6"><Field label="Kas buvo atlikta?"><input required value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className={inputClass} placeholder="pvz. Tepalai ir filtrai" data-testid="input-expense-label" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="Kategorija"><div className="relative"><select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={selectClass} data-testid="select-expense-category"><option>Remontas</option><option>Transportas</option><option>Dokumentai</option><option>Detalės</option><option>Reklama</option><option>Kita</option></select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-muted-foreground" /></div></Field><Field label="Suma, EUR"><input required type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className={inputClass} placeholder="0,00" data-testid="input-expense-amount" /></Field></div><Field label="Data"><input required type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className={inputClass} data-testid="input-expense-date" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-expense">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-expense">Įrašyti išlaidas</button></div></form></Modal>;
 }
 
-function SellModal({ vehicle, close, save }: { vehicle?: Vehicle; close: () => void; save: (vehicleId: string, salePrice: number) => void }) {
+function SellModal({ vehicle, close, save }: { vehicle?: Vehicle; close: () => void; save: (vehicleId: string, salePrice: number, expectedVersion?: number) => Promise<void> }) {
   const [price, setPrice] = useState('');
-  function submit(event: FormEvent) { event.preventDefault(); if (vehicle) save(vehicle.id, Number(price)); }
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); if (!vehicle || saving) return; setSaving(true); try { await save(vehicle.id, Number(price), vehicle.version); } catch (error) { window.alert(error instanceof Error ? error.message : 'Pardavimo išsaugoti nepavyko.'); } finally { setSaving(false); } }
   const cost = vehicle ? vehicleCost(vehicle) : 0;
   return <Modal title="Pažymėti parduotą" eyebrow={`${vehicle?.make ?? ''} ${vehicle?.model ?? ''}`} close={close}><form onSubmit={submit} className="p-5 sm:p-6"><div className="rounded-lg bg-muted/60 p-4"><div className="flex justify-between text-sm"><span className="text-muted-foreground">Dabartinė savikaina</span><span className="font-mono-ui font-bold">{money(cost)}</span></div><p className="mt-2 text-xs text-muted-foreground">Pardavimo kaina bus naudojama realiam pelnui apskaičiuoti.</p></div><div className="mt-5"><Field label="Pardavimo kaina, EUR"><input required autoFocus type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} placeholder="0,00" data-testid="input-sale-price" /></Field></div><div className="mt-6 flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-sale">Atšaukti</button><button type="submit" className="rounded-lg bg-secondary px-4 py-2.5 text-sm font-bold text-secondary-foreground" data-testid="button-save-sale">Patvirtinti pardavimą</button></div></form></Modal>;
 }
 
-function PartsCarModal({ car, close, save }: { car?: PartsCar; close: () => void; save: (payload: Omit<PartsCar, 'id' | 'createdAt' | 'parts' | 'status'> & { id?: string }) => void }) {
+function PartsCarModal({ car, close, save }: { car?: PartsCar; close: () => void; save: (payload: Omit<PartsCar, 'id' | 'createdAt' | 'parts' | 'status'> & { id?: string }) => Promise<void> }) {
   const [form, setForm] = useState({ year: String(car?.year ?? 2015), make: car?.make ?? '', model: car?.model ?? '', engine: car?.engine ?? '', fuel: car?.fuel ?? 'Dyzelinas', mileage: String(car?.mileage ?? ''), purchasePrice: String(car?.purchasePrice ?? ''), location: car?.location ?? 'Dalių sandėlis' });
-  function submit(event: FormEvent) { event.preventDefault(); save({ ...form, id: car?.id, year: Number(form.year), mileage: Number(form.mileage), purchasePrice: Number(form.purchasePrice) }); }
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) { event.preventDefault(); if (saving) return; setSaving(true); try { await save({ ...form, id: car?.id, version: car?.version, year: Number(form.year), mileage: Number(form.mileage), purchasePrice: Number(form.purchasePrice) }); } catch (error) { window.alert(error instanceof Error ? error.message : 'Donoro išsaugoti nepavyko.'); } finally { setSaving(false); } }
   return <Modal title={car ? 'Redaguoti donorą' : 'Naujas donoras'} eyebrow="Dalių žurnalas" close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6"><div className="sm:col-span-2 rounded-lg border border-secondary/20 bg-accent/45 px-3 py-2.5 text-xs leading-5 text-accent-foreground">Donoro vertė atsiperka palaipsniui — pažymėk kiekvieną parduotą detalę ir matysi realų atsipirkimą.</div><Field label="Metai"><input required type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} className={inputClass} data-testid="input-donor-year" /></Field><Field label="Rida, km"><input required type="number" value={form.mileage} onChange={(e) => setForm({ ...form, mileage: e.target.value })} className={inputClass} data-testid="input-donor-mileage" /></Field><Field label="Markė"><input required value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} className={inputClass} placeholder="pvz. Volkswagen" data-testid="input-donor-make" /></Field><Field label="Modelis"><input required value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} placeholder="pvz. Passat B6" data-testid="input-donor-model" /></Field><Field label="Variklis"><input required value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} className={inputClass} placeholder="pvz. 2.0 TDI · 103 kW" data-testid="input-donor-engine" /></Field><Field label="Kuras"><div className="relative"><select value={form.fuel} onChange={(e) => setForm({ ...form, fuel: e.target.value })} className={selectClass} data-testid="select-donor-fuel"><option>Dyzelinas</option><option>Benzinas</option><option>Hibridas</option><option>Elektra</option></select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-muted-foreground" /></div></Field><Field label="Pirkimo kaina, EUR"><input required type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} className={inputClass} data-testid="input-donor-purchase-price" /></Field><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Lentyna B3" data-testid="input-donor-location" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4 sm:col-span-2"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-donor">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-donor">{car ? 'Išsaugoti pakeitimus' : 'Pridėti donorą'}</button></div></form></Modal>;
 }
 

@@ -5,7 +5,16 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import * as zod from 'zod';
+import * as zodImport from 'zod';
+
+// Orval emits Zod 4 standalone helpers for a few OpenAPI primitives. The
+// workspace intentionally uses Zod 3, so provide the equivalent chained
+// helpers while keeping this generated contract usable by the API server.
+const zod = {
+  ...zodImport,
+  int: () => zodImport.number().int(),
+  email: () => zodImport.string().email(),
+};
 
 
 /**
@@ -21,7 +30,7 @@ export const HealthCheckResponse = zod.object({
  * @summary Get the current user's access
  */
 export const GetAccessMeResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "clerkUserId": zod.string().nullish(),
   "email": zod.string(),
   "name": zod.string(),
@@ -37,7 +46,7 @@ export const GetAccessMeResponse = zod.object({
  * @summary List users and their access
  */
 export const ListAccessUsersResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "clerkUserId": zod.string().nullish(),
   "email": zod.string(),
   "name": zod.string(),
@@ -54,11 +63,11 @@ export const ListAccessUsersResponse = zod.array(ListAccessUsersResponseItem)
  * @summary Invite an employee
  */
 export const InviteAccessUserBody = zod.object({
-  "email": zod.string().email()
+  "email": zod.email()
 })
 
 export const InviteAccessUserResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "clerkUserId": zod.string().nullish(),
   "email": zod.string(),
   "name": zod.string(),
@@ -83,7 +92,7 @@ export const UpdateAccessUserBody = zod.object({
 })
 
 export const UpdateAccessUserResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "clerkUserId": zod.string().nullish(),
   "email": zod.string(),
   "name": zod.string(),
@@ -99,7 +108,7 @@ export const UpdateAccessUserResponse = zod.object({
  * @summary List all parts
  */
 export const ListPartsResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "publicId": zod.string(),
   "donorId": zod.string(),
   "donorLabel": zod.string(),
@@ -135,7 +144,7 @@ export const CreatePartBody = zod.object({
 })
 
 export const CreatePartResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "publicId": zod.string(),
   "donorId": zod.string(),
   "donorLabel": zod.string(),
@@ -179,7 +188,7 @@ export const ImportPartsBody = zod.object({
 })
 
 export const ImportPartsResponseItem = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "publicId": zod.string(),
   "donorId": zod.string(),
   "donorLabel": zod.string(),
@@ -216,7 +225,7 @@ export const UpdatePartBody = zod.object({
 })
 
 export const UpdatePartResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "publicId": zod.string(),
   "donorId": zod.string(),
   "donorLabel": zod.string(),
@@ -252,7 +261,7 @@ export const GetPublicPartParams = zod.object({
 })
 
 export const GetPublicPartResponse = zod.object({
-  "id": zod.number().int(),
+  "id": zod.int(),
   "publicId": zod.string(),
   "donorId": zod.string(),
   "donorLabel": zod.string(),
@@ -265,5 +274,785 @@ export const GetPublicPartResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
+
+
+/**
+ * @summary List vehicles and their expenses
+ */
+
+
+
+export const listVehiclesResponseMileageMin = 0;
+
+export const listVehiclesResponsePurchasePriceMin = 0;
+
+export const listVehiclesResponseSalePriceMin = 0;
+
+export const listVehiclesResponseAskingPriceMin = 0;
+
+
+
+
+export const listVehiclesResponseExpensesItemAmountMin = 0;
+
+
+
+
+
+export const ListVehiclesResponseItem = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(listVehiclesResponseMileageMin),
+  "purchasePrice": zod.number().min(listVehiclesResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'sold']),
+  "salePrice": zod.number().min(listVehiclesResponseSalePriceMin).nullish(),
+  "askingPrice": zod.number().min(listVehiclesResponseAskingPriceMin).nullish(),
+  "purchaseDate": zod.string().nullish(),
+  "vin": zod.string().nullish(),
+  "registration": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "soldAt": zod.string().nullish(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "vehicleId": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(listVehiclesResponseExpensesItemAmountMin),
+  "date": zod.string(),
+  "category": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListVehiclesResponse = zod.array(ListVehiclesResponseItem)
+
+
+/**
+ * @summary Create a vehicle using a caller supplied stable ID
+ */
+
+
+
+export const createVehicleBodyMileageMin = 0;
+
+export const createVehicleBodyPurchasePriceMin = 0;
+
+export const createVehicleBodySalePriceMin = 0;
+
+export const createVehicleBodyAskingPriceMin = 0;
+
+
+
+export const createVehicleBodyExpensesItemAmountMin = 0;
+
+
+
+export const CreateVehicleBody = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(createVehicleBodyMileageMin),
+  "purchasePrice": zod.number().min(createVehicleBodyPurchasePriceMin),
+  "status": zod.enum(['active', 'sold']).optional(),
+  "salePrice": zod.number().min(createVehicleBodySalePriceMin).optional(),
+  "askingPrice": zod.number().min(createVehicleBodyAskingPriceMin).optional(),
+  "purchaseDate": zod.string().optional(),
+  "vin": zod.string().optional(),
+  "registration": zod.string().optional(),
+  "location": zod.string().optional(),
+  "source": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "soldAt": zod.string().optional(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1).optional(),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(createVehicleBodyExpensesItemAmountMin),
+  "date": zod.string(),
+  "category": zod.string().optional()
+})).optional()
+})
+
+
+
+
+export const createVehicleResponseMileageMin = 0;
+
+export const createVehicleResponsePurchasePriceMin = 0;
+
+export const createVehicleResponseSalePriceMin = 0;
+
+export const createVehicleResponseAskingPriceMin = 0;
+
+
+
+
+export const createVehicleResponseExpensesItemAmountMin = 0;
+
+
+
+
+
+export const CreateVehicleResponse = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(createVehicleResponseMileageMin),
+  "purchasePrice": zod.number().min(createVehicleResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'sold']),
+  "salePrice": zod.number().min(createVehicleResponseSalePriceMin).nullish(),
+  "askingPrice": zod.number().min(createVehicleResponseAskingPriceMin).nullish(),
+  "purchaseDate": zod.string().nullish(),
+  "vin": zod.string().nullish(),
+  "registration": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "soldAt": zod.string().nullish(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "vehicleId": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(createVehicleResponseExpensesItemAmountMin),
+  "date": zod.string(),
+  "category": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Add missing legacy vehicles and expenses without overwriting server records
+ */
+
+
+
+export const importVehiclesBodyVehiclesItemOneMileageMin = 0;
+
+export const importVehiclesBodyVehiclesItemOnePurchasePriceMin = 0;
+
+export const importVehiclesBodyVehiclesItemOneSalePriceMin = 0;
+
+export const importVehiclesBodyVehiclesItemOneAskingPriceMin = 0;
+
+
+
+export const importVehiclesBodyVehiclesItemOneExpensesItemAmountMin = 0;
+
+
+
+export const importVehiclesBodyVehiclesItemTwoExpensesItemOneAmountMin = 0;
+
+
+export const importVehiclesBodyVehiclesMax = 1000;
+
+
+
+export const ImportVehiclesBody = zod.object({
+  "vehicles": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(importVehiclesBodyVehiclesItemOneMileageMin),
+  "purchasePrice": zod.number().min(importVehiclesBodyVehiclesItemOnePurchasePriceMin),
+  "status": zod.enum(['active', 'sold']).optional(),
+  "salePrice": zod.number().min(importVehiclesBodyVehiclesItemOneSalePriceMin).optional(),
+  "askingPrice": zod.number().min(importVehiclesBodyVehiclesItemOneAskingPriceMin).optional(),
+  "purchaseDate": zod.string().optional(),
+  "vin": zod.string().optional(),
+  "registration": zod.string().optional(),
+  "location": zod.string().optional(),
+  "source": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "soldAt": zod.string().optional(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1).optional(),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(importVehiclesBodyVehiclesItemOneExpensesItemAmountMin),
+  "date": zod.string(),
+  "category": zod.string().optional()
+})).optional()
+}).and(zod.object({
+  "createdAt": zod.coerce.date(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(importVehiclesBodyVehiclesItemTwoExpensesItemOneAmountMin),
+  "date": zod.string(),
+  "category": zod.string().optional()
+}).and(zod.object({
+  "id": zod.string().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+}))).optional()
+}))).max(importVehiclesBodyVehiclesMax)
+})
+
+
+
+
+export const importVehiclesResponseMileageMin = 0;
+
+export const importVehiclesResponsePurchasePriceMin = 0;
+
+export const importVehiclesResponseSalePriceMin = 0;
+
+export const importVehiclesResponseAskingPriceMin = 0;
+
+
+
+
+export const importVehiclesResponseExpensesItemAmountMin = 0;
+
+
+
+
+
+export const ImportVehiclesResponseItem = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(importVehiclesResponseMileageMin),
+  "purchasePrice": zod.number().min(importVehiclesResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'sold']),
+  "salePrice": zod.number().min(importVehiclesResponseSalePriceMin).nullish(),
+  "askingPrice": zod.number().min(importVehiclesResponseAskingPriceMin).nullish(),
+  "purchaseDate": zod.string().nullish(),
+  "vin": zod.string().nullish(),
+  "registration": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "soldAt": zod.string().nullish(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "vehicleId": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(importVehiclesResponseExpensesItemAmountMin),
+  "date": zod.string(),
+  "category": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ImportVehiclesResponse = zod.array(ImportVehiclesResponseItem)
+
+
+/**
+ * @summary Update one vehicle with optimistic conflict detection
+ */
+
+
+
+export const UpdateVehicleParams = zod.object({
+  "vehicleId": zod.coerce.string().min(1)
+})
+
+
+
+export const updateVehicleBodyOneMileageMin = 0;
+
+export const updateVehicleBodyOnePurchasePriceMin = 0;
+
+export const updateVehicleBodyOneSalePriceMin = 0;
+
+export const updateVehicleBodyOneAskingPriceMin = 0;
+
+
+
+
+export const UpdateVehicleBody = zod.object({
+  "year": zod.int().optional(),
+  "make": zod.string().min(1).optional(),
+  "model": zod.string().min(1).optional(),
+  "engine": zod.string().optional(),
+  "fuel": zod.string().optional(),
+  "mileage": zod.int().min(updateVehicleBodyOneMileageMin).optional(),
+  "purchasePrice": zod.number().min(updateVehicleBodyOnePurchasePriceMin).optional(),
+  "status": zod.enum(['active', 'sold']).optional(),
+  "salePrice": zod.number().min(updateVehicleBodyOneSalePriceMin).nullish(),
+  "askingPrice": zod.number().min(updateVehicleBodyOneAskingPriceMin).nullish(),
+  "purchaseDate": zod.string().nullish(),
+  "vin": zod.string().nullish(),
+  "registration": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "soldAt": zod.string().nullish()
+}).and(zod.object({
+  "expectedVersion": zod.int().min(1)
+}))
+
+
+
+
+export const updateVehicleResponseMileageMin = 0;
+
+export const updateVehicleResponsePurchasePriceMin = 0;
+
+export const updateVehicleResponseSalePriceMin = 0;
+
+export const updateVehicleResponseAskingPriceMin = 0;
+
+
+
+
+export const updateVehicleResponseExpensesItemAmountMin = 0;
+
+
+
+
+
+export const UpdateVehicleResponse = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(updateVehicleResponseMileageMin),
+  "purchasePrice": zod.number().min(updateVehicleResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'sold']),
+  "salePrice": zod.number().min(updateVehicleResponseSalePriceMin).nullish(),
+  "askingPrice": zod.number().min(updateVehicleResponseAskingPriceMin).nullish(),
+  "purchaseDate": zod.string().nullish(),
+  "vin": zod.string().nullish(),
+  "registration": zod.string().nullish(),
+  "location": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "soldAt": zod.string().nullish(),
+  "expenses": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "vehicleId": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(updateVehicleResponseExpensesItemAmountMin),
+  "date": zod.string(),
+  "category": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete one vehicle and tombstone its stable ID
+ */
+
+
+
+export const DeleteVehicleParams = zod.object({
+  "vehicleId": zod.coerce.string().min(1)
+})
+
+export const DeleteVehicleResponse = zod.void()
+
+
+/**
+ * @summary Add one expense to a vehicle
+ */
+
+
+
+export const CreateVehicleExpenseParams = zod.object({
+  "vehicleId": zod.coerce.string().min(1)
+})
+
+
+
+export const createVehicleExpenseBodyAmountMin = 0;
+
+
+
+export const CreateVehicleExpenseBody = zod.object({
+  "id": zod.string().min(1).optional(),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(createVehicleExpenseBodyAmountMin),
+  "date": zod.string(),
+  "category": zod.string().optional()
+})
+
+
+
+
+export const createVehicleExpenseResponseAmountMin = 0;
+
+
+
+
+export const CreateVehicleExpenseResponse = zod.object({
+  "id": zod.string().min(1),
+  "vehicleId": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(createVehicleExpenseResponseAmountMin),
+  "date": zod.string(),
+  "category": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update one expense
+ */
+
+
+
+export const UpdateVehicleExpenseParams = zod.object({
+  "expenseId": zod.coerce.string().min(1)
+})
+
+
+export const updateVehicleExpenseBodyAmountMin = 0;
+
+
+
+
+export const UpdateVehicleExpenseBody = zod.object({
+  "label": zod.string().min(1).optional(),
+  "amount": zod.number().min(updateVehicleExpenseBodyAmountMin).optional(),
+  "date": zod.string().optional(),
+  "category": zod.string().nullish(),
+  "expectedVersion": zod.int().min(1)
+})
+
+
+
+
+export const updateVehicleExpenseResponseAmountMin = 0;
+
+
+
+
+export const UpdateVehicleExpenseResponse = zod.object({
+  "id": zod.string().min(1),
+  "vehicleId": zod.string().min(1),
+  "label": zod.string().min(1),
+  "amount": zod.number().min(updateVehicleExpenseResponseAmountMin),
+  "date": zod.string(),
+  "category": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete one expense
+ */
+
+
+
+export const DeleteVehicleExpenseParams = zod.object({
+  "expenseId": zod.coerce.string().min(1)
+})
+
+export const DeleteVehicleExpenseResponse = zod.void()
+
+
+/**
+ * @summary List shared donor vehicles
+ */
+
+
+
+export const listDonorsResponseMileageMin = 0;
+
+export const listDonorsResponsePurchasePriceMin = 0;
+
+
+
+
+export const ListDonorsResponseItem = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(listDonorsResponseMileageMin),
+  "purchasePrice": zod.number().min(listDonorsResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'closed']),
+  "location": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListDonorsResponse = zod.array(ListDonorsResponseItem)
+
+
+/**
+ * @summary Create a donor using a caller supplied stable ID
+ */
+
+
+
+export const createDonorBodyMileageMin = 0;
+
+export const createDonorBodyPurchasePriceMin = 0;
+
+
+
+export const CreateDonorBody = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(createDonorBodyMileageMin),
+  "purchasePrice": zod.number().min(createDonorBodyPurchasePriceMin),
+  "status": zod.enum(['active', 'closed']).optional(),
+  "location": zod.string().optional(),
+  "createdAt": zod.coerce.date().optional()
+})
+
+
+
+
+export const createDonorResponseMileageMin = 0;
+
+export const createDonorResponsePurchasePriceMin = 0;
+
+
+
+
+export const CreateDonorResponse = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(createDonorResponseMileageMin),
+  "purchasePrice": zod.number().min(createDonorResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'closed']),
+  "location": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Add missing legacy donors without overwriting server records
+ */
+
+
+
+export const importDonorsBodyDonorsItemMileageMin = 0;
+
+export const importDonorsBodyDonorsItemPurchasePriceMin = 0;
+
+export const importDonorsBodyDonorsMax = 1000;
+
+
+
+export const ImportDonorsBody = zod.object({
+  "donors": zod.array(zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(importDonorsBodyDonorsItemMileageMin),
+  "purchasePrice": zod.number().min(importDonorsBodyDonorsItemPurchasePriceMin),
+  "status": zod.enum(['active', 'closed']).optional(),
+  "location": zod.string().optional(),
+  "createdAt": zod.coerce.date().optional()
+})).max(importDonorsBodyDonorsMax)
+})
+
+
+
+
+export const importDonorsResponseMileageMin = 0;
+
+export const importDonorsResponsePurchasePriceMin = 0;
+
+
+
+
+export const ImportDonorsResponseItem = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(importDonorsResponseMileageMin),
+  "purchasePrice": zod.number().min(importDonorsResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'closed']),
+  "location": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ImportDonorsResponse = zod.array(ImportDonorsResponseItem)
+
+
+/**
+ * @summary Update one donor with optimistic conflict detection
+ */
+
+
+
+export const UpdateDonorParams = zod.object({
+  "donorId": zod.coerce.string().min(1)
+})
+
+
+
+export const updateDonorBodyOneMileageMin = 0;
+
+export const updateDonorBodyOnePurchasePriceMin = 0;
+
+
+
+
+export const UpdateDonorBody = zod.object({
+  "year": zod.int().optional(),
+  "make": zod.string().min(1).optional(),
+  "model": zod.string().min(1).optional(),
+  "engine": zod.string().optional(),
+  "fuel": zod.string().optional(),
+  "mileage": zod.int().min(updateDonorBodyOneMileageMin).optional(),
+  "purchasePrice": zod.number().min(updateDonorBodyOnePurchasePriceMin).optional(),
+  "status": zod.enum(['active', 'closed']).optional(),
+  "location": zod.string().nullish()
+}).and(zod.object({
+  "expectedVersion": zod.int().min(1)
+}))
+
+
+
+
+export const updateDonorResponseMileageMin = 0;
+
+export const updateDonorResponsePurchasePriceMin = 0;
+
+
+
+
+export const UpdateDonorResponse = zod.object({
+  "id": zod.string().min(1),
+  "year": zod.int(),
+  "make": zod.string().min(1),
+  "model": zod.string().min(1),
+  "engine": zod.string(),
+  "fuel": zod.string(),
+  "mileage": zod.int().min(updateDonorResponseMileageMin),
+  "purchasePrice": zod.number().min(updateDonorResponsePurchasePriceMin),
+  "status": zod.enum(['active', 'closed']),
+  "location": zod.string().nullish(),
+  "version": zod.int().min(1),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a donor while preserving associated parts
+ */
+
+
+
+export const DeleteDonorParams = zod.object({
+  "donorId": zod.coerce.string().min(1)
+})
+
+export const DeleteDonorQueryParams = zod.object({
+  "preserveParts": zod.coerce.boolean().optional().describe('Required when parts still reference this donor; parts stay visible as orphaned server records.')
+})
+
+export const DeleteDonorResponse = zod.void()
+
+
+/**
+ * @summary List shared reusable settings
+ */
+export const ListSyncSettingsResponseItem = zod.object({
+  "key": zod.string(),
+  "value": zod.record(zod.string(), zod.unknown()),
+  "version": zod.int(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListSyncSettingsResponse = zod.array(ListSyncSettingsResponseItem)
+
+
+/**
+ * @summary Create or replace one shared setting
+ */
+export const upsertSyncSettingPathKeyMax = 120;
+
+
+
+export const UpsertSyncSettingParams = zod.object({
+  "key": zod.coerce.string().min(1).max(upsertSyncSettingPathKeyMax)
+})
+
+
+
+
+export const UpsertSyncSettingBody = zod.object({
+  "value": zod.record(zod.string(), zod.unknown()),
+  "expectedVersion": zod.int().min(1).optional()
+})
+
+export const UpsertSyncSettingResponse = zod.object({
+  "key": zod.string(),
+  "value": zod.record(zod.string(), zod.unknown()),
+  "version": zod.int(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete one shared setting
+ */
+export const deleteSyncSettingPathKeyMax = 120;
+
+
+
+export const DeleteSyncSettingParams = zod.object({
+  "key": zod.coerce.string().min(1).max(deleteSyncSettingPathKeyMax)
+})
+
+export const DeleteSyncSettingResponse = zod.void()
 
 

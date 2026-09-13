@@ -17,17 +17,18 @@ import {
 import {
   createLocalId,
   DEFAULT_PRINTER_PROFILE,
-  loadCustomLabelSizes,
+  loadLabelQuantity,
+  loadSelectedPrinterProfile,
   loadSelectedLabelSize,
-  loadPrinterProfiles,
   PRESET_LABEL_SIZES,
-  saveCustomLabelSizes,
+  saveLabelQuantity,
   saveSelectedLabelSize,
-  savePrinterProfiles,
+  saveSelectedPrinterProfile,
   type CustomLabelSize,
   type PrinterProfile,
 } from '@/components/label-printing-storage';
 import { openLabelPrintWindow } from '@/components/label-printing-window';
+import { useLabelPrintingSync } from '@/hooks/use-label-printing-sync';
 
 type LabelPrintSetupProps = {
   open: boolean;
@@ -35,8 +36,8 @@ type LabelPrintSetupProps = {
   data: PartLabelData;
 };
 
-type ProfileDraft = { id?: string; name: string };
-type SizeDraft = { id?: string; name: string; widthMm: string; heightMm: string };
+type ProfileDraft = { id?: string; name: string; version?: number };
+type SizeDraft = { id?: string; name: string; widthMm: string; heightMm: string; version?: number };
 type LabelGeometry = { status: 'pending' | 'checked'; fits: boolean; reason?: string };
 type FitCandidate = { layout: LabelLayout; fontMm: number };
 type FitResult = { candidate: FitCandidate; score: number };
@@ -212,13 +213,24 @@ function ScaledLabelPreview({
 }
 
 export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupProps) {
-  const [profiles, setProfiles] = useState<PrinterProfile[]>(loadPrinterProfiles);
-  const [customSizes, setCustomSizes] = useState<CustomLabelSize[]>(loadCustomLabelSizes);
-  const [selectedProfileId, setSelectedProfileId] = useState(DEFAULT_PRINTER_PROFILE.id);
+  const {
+    profiles,
+    customSizes,
+    loading: settingsLoading,
+    saving: settingsSaving,
+    syncError: settingsSyncError,
+    saveProfile: saveSharedProfile,
+    saveSize: saveSharedSize,
+    profileRevision,
+    sizeRevision,
+    deleteProfile: deleteSharedProfile,
+    deleteSize: deleteSharedSize,
+  } = useLabelPrintingSync(open);
+  const [selectedProfileId, setSelectedProfileId] = useState(() => loadSelectedPrinterProfile() ?? DEFAULT_PRINTER_PROFILE.id);
   const [sizeId, setSizeId] = useState(() => loadSelectedLabelSize() ?? defaultSizeId);
   const [manualWidth, setManualWidth] = useState('60');
   const [manualHeight, setManualHeight] = useState('40');
-  const [quantity, setQuantity] = useState('1');
+  const [quantity, setQuantity] = useState(loadLabelQuantity);
   const [profileEditor, setProfileEditor] = useState<ProfileDraft | null>(null);
   const [sizeEditor, setSizeEditor] = useState<SizeDraft | null>(null);
   const [profileError, setProfileError] = useState('');
@@ -240,6 +252,14 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
   useEffect(() => () => {
     if (manualSaveTimerRef.current !== undefined) window.clearTimeout(manualSaveTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!open || settingsLoading) return;
+    if (profiles.some((profile) => profile.id === selectedProfileId)) return;
+    const fallback = profiles[0]?.id ?? DEFAULT_PRINTER_PROFILE.id;
+    setSelectedProfileId(fallback);
+    saveSelectedPrinterProfile(fallback);
+  }, [open, profiles, selectedProfileId, settingsLoading]);
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0];
   const selectedSize = sizeId === 'manual'
@@ -277,11 +297,13 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
   const effectiveLayout = fittedLayout ?? layout;
 
   useLayoutEffect(() => {
+    if (!open || settingsLoading) return;
     const availableSize = [...PRESET_LABEL_SIZES, ...customSizes].some((size) => size.id === sizeId);
     if (sizeId !== 'manual' && !availableSize) {
       setSizeId(defaultSizeId);
+      saveSelectedLabelSize(defaultSizeId);
     }
-  }, [customSizes, sizeId]);
+  }, [customSizes, open, settingsLoading, sizeId]);
 
   useLayoutEffect(() => {
     const firstCandidate = fitCandidates[0];
@@ -434,7 +456,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     return left.widthMm === right.widthMm && left.heightMm === right.heightMm;
   }
 
-  function persistManualSize(showNotice = true) {
+  async function persistManualSize(showNotice = true) {
     if (manualSaveTimerRef.current !== undefined) {
       window.clearTimeout(manualSaveTimerRef.current);
       manualSaveTimerRef.current = undefined;
@@ -442,17 +464,21 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     if (sizeId !== 'manual' || !dimensionsValid) return false;
 
     const nextDimensions = { widthMm, heightMm };
-    const storedSizes = loadCustomLabelSizes();
+    const storedSizes = customSizes;
     const matchingPreset = PRESET_LABEL_SIZES.find((size) => sameDimensions(size, nextDimensions));
     if (matchingPreset) {
-      const nextSizes = storedSizes.filter((size) => !sameDimensions(size, nextDimensions));
-      const collectionSaved = nextSizes.length === storedSizes.length || saveCustomLabelSizes(nextSizes);
-      const selectionSaved = saveSelectedLabelSize(matchingPreset.id);
-      if (!collectionSaved || !selectionSaved) {
-        setSizeError('Formato nepavyko išsaugoti naršyklės saugykloje.');
+      try {
+        for (const size of storedSizes.filter((item) => sameDimensions(item, nextDimensions))) {
+          await deleteSharedSize(size.id);
+        }
+      } catch (error) {
+        setSizeError(error instanceof Error ? error.message : 'Formato ištrinti nepavyko.');
         return false;
       }
-      setCustomSizes(nextSizes);
+      if (!saveSelectedLabelSize(matchingPreset.id)) {
+        setSizeError('Formato pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
+        return false;
+      }
       setSizeError('');
       if (showNotice) setSizeSaveNotice(`Formatas ${matchingPreset.widthMm} × ${matchingPreset.heightMm} mm išsaugotas.`);
       manualDirtyRef.current = false;
@@ -468,20 +494,16 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
       widthMm,
       heightMm,
     };
-    const withoutDuplicateDimensions = storedSizes.filter((size) => (
-      size.id === nextSize.id
-      || (!sameDimensions(size, nextDimensions) && !size.id.startsWith('manual-'))
-    ));
-    const nextSizes = withoutDuplicateDimensions.some((size) => size.id === nextSize.id)
-      ? withoutDuplicateDimensions.map((size) => size.id === nextSize.id ? nextSize : size)
-      : [...withoutDuplicateDimensions, nextSize];
-    const collectionSaved = saveCustomLabelSizes(nextSizes);
-    const selectionSaved = saveSelectedLabelSize(nextId);
-    if (!collectionSaved || !selectionSaved) {
-      setSizeError('Formatas nepavyko išsaugoti naršyklės saugykloje.');
+    try {
+      await saveSharedSize(nextSize);
+    } catch (error) {
+      setSizeError(error instanceof Error ? error.message : 'Formato išsaugoti nepavyko.');
       return false;
     }
-    setCustomSizes(nextSizes);
+    if (!saveSelectedLabelSize(nextId)) {
+      setSizeError('Formato pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
+      return false;
+    }
     setSizeError('');
     if (showNotice) setSizeSaveNotice(`Formatas ${widthMm} × ${heightMm} mm išsaugotas.`);
     manualDirtyRef.current = false;
@@ -494,7 +516,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     manualSaveTimerRef.current = window.setTimeout(() => {
       manualSaveTimerRef.current = undefined;
       if (manualFocusCountRef.current > 0) return;
-      persistManualSize();
+      void persistManualSize();
     }, 500);
   }
 
@@ -518,13 +540,22 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     setPrintError('');
     setSizeSaveNotice('');
     if (!saveSelectedLabelSize(nextId)) {
-      setSizeError('Formato nepavyko išsaugoti naršyklės saugykloje.');
+      setSizeError('Formato pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
     }
     if (nextId === 'manual') return;
     const nextSize = [...PRESET_LABEL_SIZES, ...customSizes].find((size) => size.id === nextId);
     if (nextSize) {
       setManualWidth(String(nextSize.widthMm));
       setManualHeight(String(nextSize.heightMm));
+    }
+  }
+
+  function selectProfile(nextId: string) {
+    setSelectedProfileId(nextId);
+    if (!saveSelectedPrinterProfile(nextId)) {
+      setProfileError('Profilio pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
+    } else {
+      setProfileError('');
     }
   }
 
@@ -535,50 +566,60 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
 
   function beginEditProfile() {
     if (!selectedProfile) return;
+    if (selectedProfile.id === DEFAULT_PRINTER_PROFILE.id) {
+      setProfileError('Numatytojo profilio keisti negalima.');
+      return;
+    }
     setProfileError('');
-    setProfileEditor({ id: selectedProfile.id, name: selectedProfile.name });
+    setProfileEditor({
+      id: selectedProfile.id,
+      name: selectedProfile.name,
+      version: profileRevision(selectedProfile.id),
+    });
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     if (!profileEditor || profileEditor.name.trim().length === 0) {
       setProfileError('Įrašykite profilio pavadinimą.');
       return;
     }
     const name = profileEditor.name.trim();
-    const storedProfiles = loadPrinterProfiles();
-    let nextProfiles: PrinterProfile[];
-    if (profileEditor.id) {
-      nextProfiles = storedProfiles.map((profile) => profile.id === profileEditor.id ? { ...profile, name } : profile);
-    } else {
-      const profile = { id: createLocalId('printer'), name };
-      nextProfiles = [...storedProfiles, profile];
-    }
-    if (!savePrinterProfiles(nextProfiles)) {
-      setProfileError('Profilio nepavyko išsaugoti naršyklės saugykloje.');
+    const profile = { id: profileEditor.id ?? createLocalId('printer'), name };
+    try {
+      await saveSharedProfile(profile, profileEditor.version);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Profilio išsaugoti nepavyko.');
       return;
     }
-    setProfiles(nextProfiles);
-    if (!profileEditor.id) {
-      setSelectedProfileId(nextProfiles[nextProfiles.length - 1].id);
+    if (!saveSelectedPrinterProfile(profile.id)) {
+      setProfileError('Profilio pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
+      return;
     }
+    setSelectedProfileId(profile.id);
     setProfileEditor(null);
     setProfileError('');
   }
 
-  function deleteProfile() {
+  async function deleteProfile() {
     if (!selectedProfile) return;
-    const storedProfiles = loadPrinterProfiles();
-    if (storedProfiles.length <= 1) {
+    if (selectedProfile.id === DEFAULT_PRINTER_PROFILE.id) {
+      setProfileError('Numatytojo profilio ištrinti negalima.');
+      return;
+    }
+    if (profiles.length <= 1) {
       setProfileError('Palikite bent vieną profilio pavadinimą spausdinimo nustatymams.');
       return;
     }
-    const remaining = storedProfiles.filter((profile) => profile.id !== selectedProfile.id);
-    if (!savePrinterProfiles(remaining)) {
-      setProfileError('Profilio nepavyko išsaugoti naršyklės saugykloje.');
+    try {
+      await deleteSharedProfile(selectedProfile.id);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : 'Profilio ištrinti nepavyko.');
       return;
     }
-    setProfiles(remaining);
-    setSelectedProfileId(remaining[0].id);
+    const remaining = profiles.filter((profile) => profile.id !== selectedProfile.id);
+    const nextProfile = remaining[0] ?? DEFAULT_PRINTER_PROFILE;
+    setSelectedProfileId(nextProfile.id);
+    saveSelectedPrinterProfile(nextProfile.id);
     setProfileError('');
   }
 
@@ -596,6 +637,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
       name: size.name,
       widthMm: String(size.widthMm),
       heightMm: String(size.heightMm),
+      version: sizeRevision(size.id),
     });
   }
 
@@ -609,7 +651,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     return { width, height };
   }
 
-  function saveSize() {
+  async function saveSize() {
     if (!sizeEditor) return;
     const result = validateSizeDraft(sizeEditor);
     if ('error' in result) {
@@ -620,50 +662,62 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
       setSizeError('Toks formatas jau yra numatytųjų dydžių sąraše.');
       return;
     }
+    const duplicate = customSizes.find((size) => (
+      size.id !== sizeEditor.id && sameDimensions(size, { widthMm: result.width, heightMm: result.height })
+    ));
+    if (duplicate && sizeEditor.id) {
+      setSizeError('Toks formatas jau naudojamas kitame išsaugotame dydyje.');
+      return;
+    }
     const nextSize = {
-      id: sizeEditor.id ?? createLocalId('label-size'),
+      id: sizeEditor.id ?? duplicate?.id ?? createLocalId('label-size'),
       name: sizeEditor.name.trim(),
       widthMm: result.width,
       heightMm: result.height,
     };
-    const storedSizes = loadCustomLabelSizes();
-    const withoutDuplicateDimensions = storedSizes.filter((size) => (
-      size.id === nextSize.id || !sameDimensions(size, nextSize)
-    ));
-    const nextSizes = sizeEditor.id
-      ? withoutDuplicateDimensions.map((size) => size.id === sizeEditor.id ? nextSize : size)
-      : [...withoutDuplicateDimensions, nextSize];
-    if (!saveCustomLabelSizes(nextSizes)) {
-      setSizeError('Dydžio nepavyko išsaugoti naršyklės saugykloje.');
+    try {
+      await saveSharedSize(nextSize, sizeEditor.version);
+    } catch (error) {
+      setSizeError(error instanceof Error ? error.message : 'Dydžio išsaugoti nepavyko.');
       return;
     }
-    setCustomSizes(nextSizes);
     setSizeId(nextSize.id);
     setManualWidth(String(nextSize.widthMm));
     setManualHeight(String(nextSize.heightMm));
+    if (!saveSelectedLabelSize(nextSize.id)) {
+      setSizeError('Formato pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
+      return;
+    }
     setSizeEditor(null);
     setSizeError('');
   }
 
-  function deleteSize() {
-    const storedSizes = loadCustomLabelSizes();
-    const size = storedSizes.find((item) => item.id === sizeId);
+  async function deleteSize() {
+    const size = customSizes.find((item) => item.id === sizeId);
     if (!size) return;
-    const nextSizes = storedSizes.filter((item) => item.id !== size.id);
-    const collectionSaved = saveCustomLabelSizes(nextSizes);
-    const selectionSaved = saveSelectedLabelSize(defaultSizeId);
-    if (!collectionSaved || !selectionSaved) {
-      setSizeError('Dydžio nepavyko išsaugoti naršyklės saugykloje.');
+    try {
+      await deleteSharedSize(size.id);
+    } catch (error) {
+      setSizeError(error instanceof Error ? error.message : 'Dydžio ištrinti nepavyko.');
       return;
     }
-    setCustomSizes(nextSizes);
+    if (!saveSelectedLabelSize(defaultSizeId)) {
+      setSizeError('Formato pasirinkimo nepavyko išsaugoti naršyklės saugykloje.');
+      return;
+    }
     setSizeId(defaultSizeId);
     setSizeError('');
   }
 
   async function printLabels() {
     setPrintError('');
-    if (sizeId === 'manual') persistManualSize(false);
+    if (sizeId === 'manual') {
+      const persisted = await persistManualSize(false);
+      if (!persisted) {
+        setPrintError('Formato išsaugoti nepavyko. Patikrinkite klaidą ir bandykite dar kartą.');
+        return;
+      }
+    }
     if (!dimensionsValid) {
       setPrintError('Plotis ir aukštis turi būti nuo 10 iki 150 mm.');
       return;
@@ -727,19 +781,21 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
               <select
                 id="label-printer-profile"
                 value={selectedProfile?.id ?? ''}
-                onChange={(event) => setSelectedProfileId(event.target.value)}
+                 onChange={(event) => selectProfile(event.target.value)}
                 className={fieldClass()}
                 data-testid="select-printer-profile"
               >
                 {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
               </select>
+               {settingsLoading && <p className="mt-2 text-xs text-muted-foreground" role="status">Bendri profiliai kraunami…</p>}
+               {settingsSyncError && <p className="mt-2 text-xs text-destructive" role="alert" data-testid="status-label-settings-sync-error">{settingsSyncError}</p>}
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
                 Tikras spausdintuvas pasirenkamas vėliau atsidariusiame vietiniame sistemos spausdinimo lange.
                 Programa nepretenduoja į Bluetooth ar kitą tiesioginį aparatinės įrangos ryšį.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={beginAddProfile} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-add-printer-profile"><Plus size={14} /> Pridėti</button>
-                <button type="button" onClick={beginEditProfile} disabled={!selectedProfile} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-edit-printer-profile"><Pencil size={13} /> Redaguoti</button>
+                 <button type="button" onClick={beginEditProfile} disabled={!selectedProfile || selectedProfile.id === DEFAULT_PRINTER_PROFILE.id} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-edit-printer-profile"><Pencil size={13} /> Redaguoti</button>
                 <button type="button" onClick={deleteProfile} disabled={!selectedProfile || profiles.length <= 1} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-destructive/40 px-2.5 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-delete-printer-profile"><Trash2 size={13} /> Ištrinti</button>
               </div>
               {profileEditor && (
@@ -748,7 +804,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
                   <input id="printer-profile-name" autoFocus value={profileEditor.name} maxLength={80} onChange={(event) => setProfileEditor({ ...profileEditor, name: event.target.value })} className={fieldClass(Boolean(profileError))} data-testid="input-printer-profile-name" />
                   {profileError && <p className="mt-1 text-xs text-destructive" role="alert">{profileError}</p>}
                   <div className="mt-3 flex gap-2">
-                    <button type="submit" className="min-h-8 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground" data-testid="button-save-printer-profile">Išsaugoti</button>
+                    <button type="submit" disabled={settingsSaving || settingsLoading} className="min-h-8 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" data-testid="button-save-printer-profile">Išsaugoti</button>
                     <button type="button" onClick={() => setProfileEditor(null)} className="min-h-8 rounded-lg border border-border px-3 text-xs font-semibold" data-testid="button-cancel-printer-profile">Atšaukti</button>
                   </div>
                 </form>
@@ -812,8 +868,9 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
                {sizeId === 'manual' && dimensionsValid && (
                  <button
                    type="button"
-                   onClick={() => { persistManualSize(); }}
-                   className="mt-3 inline-flex min-h-8 items-center rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground"
+                    onClick={() => { void persistManualSize(); }}
+                    disabled={settingsSaving || settingsLoading}
+                    className="mt-3 inline-flex min-h-8 items-center rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
                    data-testid="button-save-manual-label-size"
                  >
                    Išsaugoti formatą
@@ -836,18 +893,18 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
                   </div>
                   {sizeError && <p className="mt-2 text-xs text-destructive" role="alert">{sizeError}</p>}
                   <div className="mt-3 flex gap-2">
-                    <button type="submit" className="min-h-8 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground" data-testid="button-save-label-size">Išsaugoti</button>
+                    <button type="submit" disabled={settingsSaving || settingsLoading} className="min-h-8 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50" data-testid="button-save-label-size">Išsaugoti</button>
                     <button type="button" onClick={() => setSizeEditor(null)} className="min-h-8 rounded-lg border border-border px-3 text-xs font-semibold" data-testid="button-cancel-label-size">Atšaukti</button>
                   </div>
                 </form>
               )}
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">Numatyti 30 × 20, 40 × 30, 50 × 30 ir 60 × 40 mm dydžiai lieka pasiekiami; papildomi dydžiai saugomi tik šioje naršyklėje.</p>
+               <p className="mt-3 text-xs leading-5 text-muted-foreground">Numatyti 30 × 20, 40 × 30, 50 × 30 ir 60 × 40 mm dydžiai lieka pasiekiami; papildomi dydžiai ir profiliai sinchronizuojami tarp įrenginių.</p>
             </section>
 
             <section className="rounded-xl border border-border bg-card p-4" aria-labelledby="label-quantity-heading">
               <h2 id="label-quantity-heading" className="text-sm font-bold">Kiekis</h2>
               <label htmlFor="label-quantity" className="mt-3 block text-xs font-semibold">Etikečių skaičius</label>
-              <input id="label-quantity" type="number" inputMode="numeric" min={1} max={100} step={1} value={quantity} onChange={(event) => setQuantity(event.target.value)} className={fieldClass(!quantityValid)} aria-invalid={!quantityValid} data-testid="input-label-quantity" />
+                   <input id="label-quantity" type="number" inputMode="numeric" min={1} max={100} step={1} value={quantity} onChange={(event) => { setQuantity(event.target.value); saveLabelQuantity(event.target.value); }} className={fieldClass(!quantityValid)} aria-invalid={!quantityValid} data-testid="input-label-quantity" />
               {!quantityValid && <p className="mt-1 text-xs text-destructive" role="alert">Kiekis turi būti sveikas skaičius nuo 1 iki 100.</p>}
             </section>
           </div>

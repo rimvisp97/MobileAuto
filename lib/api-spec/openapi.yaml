@@ -10,6 +10,16 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: vehicles
+    description: Shared vehicle ledger
+  - name: donors
+    description: Shared donor vehicle ledger
+  - name: expenses
+    description: Vehicle expenses
+  - name: settings
+    description: Shared reusable settings
+  - name: sync
+    description: Idempotent legacy browser imports
 paths:
   /healthz:
     get:
@@ -195,6 +205,331 @@ paths:
                 $ref: "#/components/schemas/Part"
         "404":
           description: Part not found
+  /vehicles:
+    get:
+      operationId: listVehicles
+      tags: [vehicles]
+      summary: List vehicles and their expenses
+      responses:
+        "200":
+          description: Vehicles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehiclesResponse"
+    post:
+      operationId: createVehicle
+      tags: [vehicles]
+      summary: Create a vehicle using a caller supplied stable ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleInput"
+      responses:
+        "201":
+          description: Created vehicle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "409":
+          description: ID already exists or was deleted
+  /vehicles/import:
+    post:
+      operationId: importVehicles
+      tags: [sync]
+      summary: Add missing legacy vehicles and expenses without overwriting server records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleImportInput"
+      responses:
+        "200":
+          description: Current shared vehicles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VehiclesResponse"
+  /vehicles/{vehicleId}:
+    patch:
+      operationId: updateVehicle
+      tags: [vehicles]
+      summary: Update one vehicle with optimistic conflict detection
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VehicleUpdate"
+      responses:
+        "200":
+          description: Updated vehicle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "404":
+          description: Vehicle not found
+        "409":
+          description: Version conflict
+    delete:
+      operationId: deleteVehicle
+      tags: [vehicles]
+      summary: Delete one vehicle and tombstone its stable ID
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "204":
+          description: Vehicle deleted
+        "404":
+          description: Vehicle not found
+  /vehicles/{vehicleId}/expenses:
+    post:
+      operationId: createVehicleExpense
+      tags: [expenses]
+      summary: Add one expense to a vehicle
+      parameters:
+        - name: vehicleId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseInput"
+      responses:
+        "201":
+          description: Created expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "404":
+          description: Vehicle not found
+  /expenses/{expenseId}:
+    patch:
+      operationId: updateVehicleExpense
+      tags: [expenses]
+      summary: Update one expense
+      parameters:
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseUpdate"
+      responses:
+        "200":
+          description: Updated expense
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "404":
+          description: Expense not found
+        "409":
+          description: Version conflict
+    delete:
+      operationId: deleteVehicleExpense
+      tags: [expenses]
+      summary: Delete one expense
+      parameters:
+        - name: expenseId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "204":
+          description: Expense deleted
+        "404":
+          description: Expense not found
+  /donors:
+    get:
+      operationId: listDonors
+      tags: [donors]
+      summary: List shared donor vehicles
+      responses:
+        "200":
+          description: Donors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DonorsResponse"
+    post:
+      operationId: createDonor
+      tags: [donors]
+      summary: Create a donor using a caller supplied stable ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DonorInput"
+      responses:
+        "201":
+          description: Created donor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Donor"
+        "409":
+          description: ID already exists or was deleted
+  /donors/import:
+    post:
+      operationId: importDonors
+      tags: [sync]
+      summary: Add missing legacy donors without overwriting server records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DonorImportInput"
+      responses:
+        "200":
+          description: Current shared donors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DonorsResponse"
+  /donors/{donorId}:
+    patch:
+      operationId: updateDonor
+      tags: [donors]
+      summary: Update one donor with optimistic conflict detection
+      parameters:
+        - name: donorId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DonorUpdate"
+      responses:
+        "200":
+          description: Updated donor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Donor"
+        "404":
+          description: Donor not found
+        "409":
+          description: Version conflict
+    delete:
+      operationId: deleteDonor
+      tags: [donors]
+      summary: Delete a donor while preserving associated parts
+      parameters:
+        - name: donorId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: preserveParts
+          in: query
+          required: false
+          description: Required when parts still reference this donor; parts stay visible as orphaned server records.
+          schema:
+            type: boolean
+      responses:
+        "204":
+          description: Donor deleted
+        "404":
+          description: Donor not found
+        "409":
+          description: Donor has parts and explicit preservation was not requested
+  /settings:
+    get:
+      operationId: listSyncSettings
+      tags: [settings]
+      summary: List shared reusable settings
+      responses:
+        "200":
+          description: Shared settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncSettingsResponse"
+  /settings/{key}:
+    put:
+      operationId: upsertSyncSetting
+      tags: [settings]
+      summary: Create or replace one shared setting
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncSettingInput"
+      responses:
+        "200":
+          description: Shared setting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncSetting"
+        "409":
+          description: Version conflict
+    delete:
+      operationId: deleteSyncSetting
+      tags: [settings]
+      summary: Delete one shared setting
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 120
+      responses:
+        "204":
+          description: Setting deleted
+        "404":
+          description: Setting not found
 components:
   schemas:
     HealthStatus:
@@ -377,4 +712,422 @@ components:
           maxItems: 1000
           items:
             $ref: "#/components/schemas/PartImportItem"
+    Vehicle:
+      type: object
+      required: [id, year, make, model, engine, fuel, mileage, purchasePrice, status, expenses, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+        make:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          minLength: 1
+        engine:
+          type: string
+        fuel:
+          type: string
+        mileage:
+          type: integer
+          minimum: 0
+        purchasePrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, sold]
+        salePrice:
+          type: ["number", "null"]
+          minimum: 0
+        askingPrice:
+          type: ["number", "null"]
+          minimum: 0
+        purchaseDate:
+          type: ["string", "null"]
+        vin:
+          type: ["string", "null"]
+        registration:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        source:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        soldAt:
+          type: ["string", "null"]
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/Expense"
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    VehiclesResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/Vehicle"
+    VehicleInput:
+      type: object
+      required: [id, year, make, model, engine, fuel, mileage, purchasePrice]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+        make:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          minLength: 1
+        engine:
+          type: string
+        fuel:
+          type: string
+        mileage:
+          type: integer
+          minimum: 0
+        purchasePrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, sold]
+        salePrice:
+          type: number
+          minimum: 0
+        askingPrice:
+          type: number
+          minimum: 0
+        purchaseDate:
+          type: string
+        vin:
+          type: string
+        registration:
+          type: string
+        location:
+          type: string
+        source:
+          type: string
+        notes:
+          type: string
+        soldAt:
+          type: string
+        expenses:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExpenseInput"
+    VehicleUpdate:
+      allOf:
+        - $ref: "#/components/schemas/VehicleInputPartial"
+        - type: object
+          required: [expectedVersion]
+          properties:
+            expectedVersion:
+              type: integer
+              minimum: 1
+    VehicleInputPartial:
+      type: object
+      properties:
+        year:
+          type: integer
+        make:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          minLength: 1
+        engine:
+          type: string
+        fuel:
+          type: string
+        mileage:
+          type: integer
+          minimum: 0
+        purchasePrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, sold]
+        salePrice:
+          type: ["number", "null"]
+          minimum: 0
+        askingPrice:
+          type: ["number", "null"]
+          minimum: 0
+        purchaseDate:
+          type: ["string", "null"]
+        vin:
+          type: ["string", "null"]
+        registration:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        source:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        soldAt:
+          type: ["string", "null"]
+    Expense:
+      type: object
+      required: [id, vehicleId, label, amount, date, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        vehicleId:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          minimum: 0
+        date:
+          type: string
+        category:
+          type: ["string", "null"]
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ExpenseInput:
+      type: object
+      required: [label, amount, date]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          minimum: 0
+        date:
+          type: string
+        category:
+          type: string
+    ExpenseUpdate:
+      type: object
+      required: [expectedVersion]
+      properties:
+        label:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          minimum: 0
+        date:
+          type: string
+        category:
+          type: ["string", "null"]
+        expectedVersion:
+          type: integer
+          minimum: 1
+    VehicleImportItem:
+      allOf:
+        - $ref: "#/components/schemas/VehicleInput"
+        - type: object
+          required: [createdAt]
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+            expenses:
+              type: array
+              items:
+                $ref: "#/components/schemas/ExpenseImportItem"
+    ExpenseImportItem:
+      allOf:
+        - $ref: "#/components/schemas/ExpenseInput"
+        - type: object
+          required: [id, createdAt]
+          properties:
+            id:
+              type: string
+              minLength: 1
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    VehicleImportInput:
+      type: object
+      required: [vehicles]
+      properties:
+        vehicles:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/VehicleImportItem"
+    Donor:
+      type: object
+      required: [id, year, make, model, engine, fuel, mileage, purchasePrice, status, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+        make:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          minLength: 1
+        engine:
+          type: string
+        fuel:
+          type: string
+        mileage:
+          type: integer
+          minimum: 0
+        purchasePrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, closed]
+        location:
+          type: ["string", "null"]
+        version:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DonorsResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/Donor"
+    DonorInput:
+      type: object
+      required: [id, year, make, model, engine, fuel, mileage, purchasePrice]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+        make:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          minLength: 1
+        engine:
+          type: string
+        fuel:
+          type: string
+        mileage:
+          type: integer
+          minimum: 0
+        purchasePrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, closed]
+        location:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    DonorUpdate:
+      allOf:
+        - $ref: "#/components/schemas/DonorInputPartial"
+        - type: object
+          required: [expectedVersion]
+          properties:
+            expectedVersion:
+              type: integer
+              minimum: 1
+    DonorInputPartial:
+      type: object
+      properties:
+        year:
+          type: integer
+        make:
+          type: string
+          minLength: 1
+        model:
+          type: string
+          minLength: 1
+        engine:
+          type: string
+        fuel:
+          type: string
+        mileage:
+          type: integer
+          minimum: 0
+        purchasePrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [active, closed]
+        location:
+          type: ["string", "null"]
+    DonorImportInput:
+      type: object
+      required: [donors]
+      properties:
+        donors:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/DonorInput"
+    SyncSetting:
+      type: object
+      required: [key, value, version, updatedAt]
+      properties:
+        key:
+          type: string
+        value:
+          type: object
+          additionalProperties: true
+        version:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+    SyncSettingsResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/SyncSetting"
+    SyncSettingInput:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: object
+          additionalProperties: true
+        expectedVersion:
+          type: integer
+          minimum: 1
 
