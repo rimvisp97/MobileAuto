@@ -297,6 +297,7 @@ export function useBusinessSync() {
     setPending((count) => count + 1);
     try {
       const result = await operation();
+      setSyncError(undefined);
       queuedRefresh.current = true;
       return result;
     } catch (error) {

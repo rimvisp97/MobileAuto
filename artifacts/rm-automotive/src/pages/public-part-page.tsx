@@ -12,7 +12,10 @@ function money(value: number) {
 }
 
 function shortDate(value: string) {
-  return new Intl.DateTimeFormat('lt-LT', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Nenurodyta'
+    : new Intl.DateTimeFormat('lt-LT', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
@@ -75,8 +78,15 @@ export function PublicPartPage() {
       setState('ready');
       setReloadKey((key) => key + 1);
       return true;
-    } catch {
-      setActionError('Būsenos pakeisti nepavyko. Pabandyk dar kartą.');
+    } catch (error) {
+      const status = typeof error === 'object' && error && 'status' in error
+        ? Number(error.status)
+        : 0;
+      setActionError(status === 409
+        ? 'Detalę jau pakeitė kitas įrenginys. Perkrauk puslapį ir bandyk dar kartą.'
+        : error instanceof Error && error.message
+          ? error.message
+          : 'Būsenos pakeisti nepavyko. Pabandyk dar kartą.');
       return false;
     }
   }
@@ -98,7 +108,13 @@ export function PublicPartPage() {
         </Link>
         {state === 'loading' && <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground shadow-sm"><span className="mx-auto mb-4 block h-3 w-3 animate-pulse rounded-full bg-primary" />Kraunami naujausi detalės duomenys...</div>}
         {state === 'not-found' && <EmptyState title="Detalė nerasta" body="Šis QR identifikatorius negalioja arba detalė buvo pašalinta." />}
-        {state === 'error' && <EmptyState title="Duomenų įkelti nepavyko" body="Patikrink interneto ryšį ir pabandyk dar kartą." />}
+        {state === 'error' && (
+          <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-6 py-10 text-center">
+            <h2 className="text-lg font-bold">Duomenų įkelti nepavyko</h2>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">Patikrink interneto ryšį ir pabandyk dar kartą.</p>
+            <button type="button" onClick={() => setReloadKey((key) => key + 1)} className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-retry-public-part">Bandyti dar kartą</button>
+          </div>
+        )}
         {state === 'ready' && part && (
           <>
             <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">

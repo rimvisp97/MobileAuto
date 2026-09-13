@@ -1,10 +1,5 @@
 export * from "./generated/api";
 export type {
-  AccessPermissions,
-  AccessUser,
-  AccessUserRole,
-  AccessUserStatus,
-  AccessUsersResponse,
   HealthStatus,
   Part,
   PartImportInput,
@@ -15,5 +10,4 @@ export type {
   PartStatus,
   PartUpdate,
   PartUpdateStatus,
-  UpdateAccessUserBodyStatus,
 } from "./generated/types";

@@ -199,7 +199,7 @@ router.post("/vehicles/import", async (req, res): Promise<void> => {
   for (const input of parsed.data.vehicles) {
     if (await isTombstoned("vehicle", input.id)) continue;
     const { expenses, ...fields } = input;
-    await db
+    const [insertedVehicle] = await db
       .insert(vehiclesTable)
       .values({
         ...fields,
@@ -213,7 +213,11 @@ router.post("/vehicles/import", async (req, res): Promise<void> => {
             : fields.askingPrice.toFixed(2),
         version: 1,
       })
-      .onConflictDoNothing({ target: vehiclesTable.id });
+      .onConflictDoNothing({ target: vehiclesTable.id })
+      .returning({ id: vehiclesTable.id });
+    // A repeated migration must not attach its legacy expenses to an already
+    // existing live vehicle. Existing rows are authoritative.
+    if (!insertedVehicle) continue;
     if (expenses?.length) {
       const expenseValues = [];
       for (const expense of expenses) {

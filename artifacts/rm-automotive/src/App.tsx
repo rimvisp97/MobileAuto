@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Part as ApiPart } from '@workspace/api-client-react';
 import { Toaster } from '@/components/ui/toaster';
@@ -6,12 +6,12 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { PartQrDialog } from '@/components/part-qr-dialog';
 import { PartStatusToggle } from '@/components/part-status-confirm-dialog';
 import { PublicPartPage } from '@/pages/public-part-page';
+import NotFound from '@/pages/not-found';
 import { useBusinessSync } from '@/hooks/use-business-sync';
 import {
   Activity,
   ArrowDownLeft,
   BadgeEuro,
-  Bell,
   CarFront,
   Check,
   ChevronDown,
@@ -96,7 +96,10 @@ function money(value: number) {
 }
 
 function shortDate(value: string) {
-  return new Intl.DateTimeFormat('lt-LT', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Nenurodyta'
+    : new Intl.DateTimeFormat('lt-LT', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 }
 
 function today() {
@@ -108,7 +111,10 @@ function partUrl(publicId: string) {
 }
 
 function monthLabel(value = today()) {
-  return new Intl.DateTimeFormat('lt-LT', { month: 'long', year: 'numeric' }).format(new Date(value));
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? 'Nenurodyta'
+    : new Intl.DateTimeFormat('lt-LT', { month: 'long', year: 'numeric' }).format(date);
 }
 
 function totalExpenses(vehicle: Vehicle) {
@@ -302,7 +308,6 @@ function AppShell() {
           </div>
           <div className="flex items-center gap-3">
              <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className={`h-1.5 w-1.5 rounded-full ${syncError ? 'bg-destructive' : pending > 0 || refreshing ? 'animate-pulse bg-primary' : 'bg-secondary'}`} /> Duomenys: PostgreSQL {pending > 0 ? `· saugoma (${pending})` : refreshing ? '· atnaujinama' : '· sinchronizuota'}</div>
-            <button className="relative rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Pranešimai" data-testid="button-notifications"><Bell size={18} /><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" /></button>
           </div>
         </header>
          <div className="app-shell min-h-[calc(100dvh-72px)] p-5 sm:p-8">
@@ -327,6 +332,15 @@ function AppShell() {
 
 type PageName = 'dashboard' | 'vehicles' | 'parts' | 'settings';
 function Sidebar({ page, mobileOpen, closeMobile, can }: { page: PageName; mobileOpen: boolean; closeMobile: () => void; can: (permission: string) => boolean }) {
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileOpen]);
+
   return (
     <>
       {mobileOpen && <button className="fixed inset-0 z-40 bg-foreground/40 lg:hidden" onClick={closeMobile} aria-label="Uždaryti meniu" data-testid="button-close-overlay" />}
@@ -680,7 +694,30 @@ function EmptyState({ title, body, action }: { title: string; body: string; acti
 }
 
 function Modal({ title, eyebrow, children, close, closeDisabled = false }: { title: string; eyebrow: string; children: ReactNode; close: () => void; closeDisabled?: boolean }) {
-  return <div className="fixed inset-0 z-[55] flex items-end justify-center bg-foreground/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5"><div className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl"><div className="flex items-start justify-between border-b border-border px-5 py-5 sm:px-6"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">{eyebrow}</p><h2 className="mt-1 text-xl font-bold">{title}</h2></div><button onClick={close} disabled={closeDisabled} className="rounded-lg p-2 text-muted-foreground hover-elevate disabled:cursor-not-allowed disabled:opacity-60" aria-label="Uždaryti langą" data-testid="button-close-modal"><X size={19} /></button></div>{children}</div></div>;
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !closeDisabled) close();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [close, closeDisabled]);
+
+  return <div className="fixed inset-0 z-[55] flex items-end justify-center bg-foreground/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget && !closeDisabled) close(); }}>
+    <div role="dialog" aria-modal="true" aria-labelledby="rm-modal-title" className="max-h-[92dvh] w-full max-w-xl overflow-y-auto rounded-t-2xl border border-border bg-card shadow-2xl sm:rounded-2xl">
+      <div className="flex items-start justify-between border-b border-border px-5 py-5 sm:px-6">
+        <div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">{eyebrow}</p><h2 id="rm-modal-title" className="mt-1 text-xl font-bold">{title}</h2></div>
+        <button ref={closeButtonRef} onClick={close} disabled={closeDisabled} className="rounded-lg p-2 text-muted-foreground hover-elevate disabled:cursor-not-allowed disabled:opacity-60" aria-label="Uždaryti langą" data-testid="button-close-modal"><X size={19} /></button>
+      </div>
+      {children}
+    </div>
+  </div>;
 }
 
 function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
@@ -755,7 +792,7 @@ function Router() {
     <Route path="/automobiliai" component={AppShell} />
     <Route path="/dalys" component={AppShell} />
     <Route path="/nustatymai" component={AppShell} />
-    <Route component={AppShell} />
+    <Route component={NotFound} />
   </Switch>;
 }
 

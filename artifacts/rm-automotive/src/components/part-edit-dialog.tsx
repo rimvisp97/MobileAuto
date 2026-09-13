@@ -57,8 +57,15 @@ export function PartEditDialog({ part, open, onOpenChange, onSaved }: PartEditDi
       });
       onSaved(updated);
       onOpenChange(false);
-    } catch {
-      setError('Detalės išsaugoti nepavyko. Pabandyk dar kartą.');
+    } catch (submitError) {
+      const status = typeof submitError === 'object' && submitError && 'status' in submitError
+        ? Number(submitError.status)
+        : 0;
+      setError(status === 409
+        ? 'Detalę jau pakeitė kitas įrenginys. Uždarykite langą, įkelkite naujausią versiją ir pakartokite.'
+        : submitError instanceof Error && submitError.message
+          ? submitError.message
+          : 'Detalės išsaugoti nepavyko. Pabandyk dar kartą.');
     } finally {
       setSaving(false);
     }

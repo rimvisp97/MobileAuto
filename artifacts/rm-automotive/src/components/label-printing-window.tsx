@@ -80,44 +80,43 @@ export async function openLabelPrintWindow(options: LabelPrintWindowOptions) {
     throw new Error('Spausdinimo lango atidaryti nepavyko. Leiskite iššokančius langus ir bandykite dar kartą.');
   }
 
-  const labels = Array.from({ length: options.quantity }, () => renderToStaticMarkup(
-    <PartLabel
-      publicId={options.publicId}
-      name={options.name}
-      donorName={options.donorName}
-      code={options.code}
-      url={options.url}
-      widthMm={options.widthMm}
-      heightMm={options.heightMm}
-      fontSizeMm={options.fontSizeMm}
-      layoutOverride={options.layout}
-    />,
-  )).join('');
-  const styles = replacePrintTokens(PRINT_WINDOW_STYLES, options.widthMm, options.heightMm);
-  const help = renderToStaticMarkup(
-    <p className="print-help">{PRINT_WINDOW_HELP}</p>,
-  );
-  const actions = renderToStaticMarkup(
-    <div className="print-actions" role="toolbar" aria-label="Spausdinimo veiksmai">
-      <button type="button" data-print-action="print">Spausdinti etiketes</button>
-      <button type="button" data-print-action="close">Uždaryti</button>
-    </div>,
-  );
-
-  popup.document.open();
-  popup.document.write(`<!doctype html><html lang="lt"><head><meta charset="utf-8"><title>Etikečių spausdinimas</title><style>${styles}</style></head><body>${actions}${help}${labels}</body></html>`);
-  popup.document.close();
-  popup.addEventListener('afterprint', () => popup.close(), { once: true });
-  popup.document.querySelector('[data-print-action="print"]')?.addEventListener('click', () => popup.print());
-  popup.document.querySelector('[data-print-action="close"]')?.addEventListener('click', () => popup.close());
-
   try {
+    const labels = Array.from({ length: options.quantity }, () => renderToStaticMarkup(
+      <PartLabel
+        publicId={options.publicId}
+        name={options.name}
+        donorName={options.donorName}
+        code={options.code}
+        url={options.url}
+        widthMm={options.widthMm}
+        heightMm={options.heightMm}
+        fontSizeMm={options.fontSizeMm}
+        layoutOverride={options.layout}
+      />,
+    )).join('');
+    const styles = replacePrintTokens(PRINT_WINDOW_STYLES, options.widthMm, options.heightMm);
+    const help = renderToStaticMarkup(
+      <p className="print-help">{PRINT_WINDOW_HELP}</p>,
+    );
+    const actions = renderToStaticMarkup(
+      <div className="print-actions" role="toolbar" aria-label="Spausdinimo veiksmai">
+        <button type="button" data-print-action="print">Spausdinti etiketes</button>
+        <button type="button" data-print-action="close">Uždaryti</button>
+      </div>,
+    );
+
+    popup.document.open();
+    popup.document.write(`<!doctype html><html lang="lt"><head><meta charset="utf-8"><title>Etikečių spausdinimas</title><style>${styles}</style></head><body>${actions}${help}${labels}</body></html>`);
+    popup.document.close();
+    popup.addEventListener('afterprint', () => popup.close(), { once: true });
+    popup.document.querySelector('[data-print-action="print"]')?.addEventListener('click', () => popup.print());
+    popup.document.querySelector('[data-print-action="close"]')?.addEventListener('click', () => popup.close());
     await waitForPrintDocument(popup);
     popup.focus();
     popup.print();
-  } catch {
-    // The accessible controls stay available in the popup if an older browser
-    // cannot report document readiness; the caller already has the window.
+  } catch (error) {
+    popup.close();
+    throw error instanceof Error ? error : new Error('Etikečių spausdinimo lango paruošti nepavyko.');
   }
   return popup;
 }

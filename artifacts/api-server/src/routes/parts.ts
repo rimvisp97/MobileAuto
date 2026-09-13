@@ -174,7 +174,20 @@ router.patch("/parts/:partId", async (req, res): Promise<void> => {
     ))
     .returning();
   if (!updated) {
-    res.status(404).json({ error: "Detalė nerasta." });
+    const [latest] = await db
+      .select()
+      .from(partsTable)
+      .where(eq(partsTable.id, params.data.partId))
+      .limit(1);
+    if (!latest) {
+      res.status(404).json({ error: "Detalė nerasta." });
+      return;
+    }
+    res.status(409).json({
+      error: "Detalė buvo pakeista kitame įrenginyje. Įkelkite naujausią versiją ir pakartokite.",
+      code: "VERSION_CONFLICT",
+      current: serialize(latest),
+    });
     return;
   }
   res.json(UpdatePartResponse.parse(serialize(updated)));

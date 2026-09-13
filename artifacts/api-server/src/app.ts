@@ -25,7 +25,9 @@ app.use(
     },
   }),
 );
-app.use(cors({ credentials: true, origin: true }));
+// The app intentionally has open access and does not use cookie credentials.
+// Do not reflect arbitrary origins with credentials enabled.
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
