@@ -697,6 +697,7 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
                       <PartQrDialog
                         publicId={part.publicId}
                         name={part.name}
+                        donorName={`${car.year} ${car.make} ${car.model}`}
                         code={part.code}
                         url={partUrl(part.publicId)}
                       />

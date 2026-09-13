@@ -13,11 +13,12 @@ import {
 type PartQrDialogProps = {
   publicId: string;
   name: string;
+  donorName: string;
   code?: string;
   url: string;
 };
 
-export function PartQrDialog({ publicId, name, code, url }: PartQrDialogProps) {
+export function PartQrDialog({ publicId, name, donorName, code, url }: PartQrDialogProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -51,6 +52,9 @@ export function PartQrDialog({ publicId, name, code, url }: PartQrDialogProps) {
           </div>
           <div className="w-full rounded-lg border border-border bg-muted/35 px-4 py-3">
             <p className="text-sm font-semibold">{name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Donoras · <span className="font-medium text-foreground">{donorName}</span>
+            </p>
             <p className="mt-1 font-mono-ui text-xs text-muted-foreground">
               OEM kodas · {code || 'Nenurodytas'}
             </p>
