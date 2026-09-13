@@ -7,6 +7,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  integer,
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 
@@ -31,6 +32,7 @@ export const partsTable = pgTable(
       .notNull()
       .defaultNow()
       .$onUpdate(() => new Date()),
+    version: integer("version").notNull().default(1),
   },
   (table) => [
     uniqueIndex("parts_public_id_unique").on(table.publicId),

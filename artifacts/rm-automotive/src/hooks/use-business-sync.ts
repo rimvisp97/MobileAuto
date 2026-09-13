@@ -70,6 +70,7 @@ function apiPartToPart(part: ApiPart): Part {
     createdAt: part.createdAt,
     soldAt: part.soldAt ?? undefined,
     updatedAt: part.updatedAt,
+    version: part.version,
   };
 }
 
@@ -441,6 +442,7 @@ export function useBusinessSync() {
     const part = partsCars.find((donor) => donor.id === donorId)?.parts.find((item) => item.id === partId);
     if (!part?.dbId) throw new Error('Detalė nerasta serveryje. Įkelkite sąrašą iš naujo.');
     await runMutation(() => updatePart(part.dbId!, {
+      expectedVersion: part.version ?? 1,
       status: part.status === 'inventory' ? 'sold' : 'inventory',
     }));
   }, [partsCars, runMutation]);
@@ -449,6 +451,7 @@ export function useBusinessSync() {
     const part = partsCars.find((donor) => donor.id === donorId)?.parts.find((item) => item.id === partId);
     if (!part?.dbId) throw new Error('Detalė nerasta serveryje. Įkelkite sąrašą iš naujo.');
     await runMutation(() => updatePart(part.dbId!, {
+      expectedVersion: part.version ?? 1,
       name: payload.name,
       code: payload.code,
       price: payload.price,

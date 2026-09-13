@@ -82,6 +82,8 @@ export interface Part {
   soldAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** @minimum 1 */
+  version: number;
 }
 
 export type PartsResponse = Part[];
@@ -108,6 +110,8 @@ export const PartUpdateStatus = {
 } as const;
 
 export interface PartUpdate {
+  /** @minimum 1 */
+  expectedVersion: number;
   /** @minLength 1 */
   name?: string;
   code?: string;

@@ -49,6 +49,7 @@ export function PartEditDialog({ part, open, onOpenChange, onSaved }: PartEditDi
     setError(undefined);
     try {
       const updated = await updatePart(part.id, {
+        expectedVersion: part.version,
         name: name.trim(),
         code: code.trim(),
         price: Number(price),

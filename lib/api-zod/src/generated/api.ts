@@ -7,14 +7,10 @@
  */
 import * as zodImport from 'zod';
 
-// Orval emits Zod 4 standalone helpers for a few OpenAPI primitives. The
-// workspace intentionally uses Zod 3, so provide the equivalent chained
-// helpers while keeping this generated contract usable by the API server.
-const zod = {
-  ...zodImport,
+const zod = Object.assign(zodImport, {
   int: () => zodImport.number().int(),
   email: () => zodImport.string().email(),
-};
+});
 
 
 /**
@@ -107,6 +103,9 @@ export const UpdateAccessUserResponse = zod.object({
 /**
  * @summary List all parts
  */
+
+
+
 export const ListPartsResponseItem = zod.object({
   "id": zod.int(),
   "publicId": zod.string(),
@@ -119,7 +118,8 @@ export const ListPartsResponseItem = zod.object({
   "location": zod.string().nullish(),
   "soldAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "version": zod.int().min(1)
 })
 export const ListPartsResponse = zod.array(ListPartsResponseItem)
 
@@ -143,6 +143,9 @@ export const CreatePartBody = zod.object({
   "location": zod.string().optional()
 })
 
+
+
+
 export const CreatePartResponse = zod.object({
   "id": zod.int(),
   "publicId": zod.string(),
@@ -155,7 +158,8 @@ export const CreatePartResponse = zod.object({
   "location": zod.string().nullish(),
   "soldAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "version": zod.int().min(1)
 })
 
 
@@ -187,6 +191,9 @@ export const ImportPartsBody = zod.object({
 })).max(importPartsBodyPartsMax)
 })
 
+
+
+
 export const ImportPartsResponseItem = zod.object({
   "id": zod.int(),
   "publicId": zod.string(),
@@ -199,7 +206,8 @@ export const ImportPartsResponseItem = zod.object({
   "location": zod.string().nullish(),
   "soldAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "version": zod.int().min(1)
 })
 export const ImportPartsResponse = zod.array(ImportPartsResponseItem)
 
@@ -212,17 +220,22 @@ export const UpdatePartParams = zod.object({
 })
 
 
+
 export const updatePartBodyPriceMin = 0;
 
 
 
 export const UpdatePartBody = zod.object({
+  "expectedVersion": zod.int().min(1),
   "name": zod.string().min(1).optional(),
   "code": zod.string().optional(),
   "price": zod.number().min(updatePartBodyPriceMin).optional(),
   "status": zod.enum(['inventory', 'sold']).optional(),
   "location": zod.string().nullish()
 })
+
+
+
 
 export const UpdatePartResponse = zod.object({
   "id": zod.int(),
@@ -236,7 +249,8 @@ export const UpdatePartResponse = zod.object({
   "location": zod.string().nullish(),
   "soldAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "version": zod.int().min(1)
 })
 
 
@@ -260,6 +274,9 @@ export const GetPublicPartParams = zod.object({
   "publicId": zod.coerce.string().regex(getPublicPartPathPublicIdRegExp)
 })
 
+
+
+
 export const GetPublicPartResponse = zod.object({
   "id": zod.int(),
   "publicId": zod.string(),
@@ -272,7 +289,8 @@ export const GetPublicPartResponse = zod.object({
   "location": zod.string().nullish(),
   "soldAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date()
+  "updatedAt": zod.coerce.date(),
+  "version": zod.int().min(1)
 })
 
 

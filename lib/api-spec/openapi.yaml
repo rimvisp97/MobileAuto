@@ -601,7 +601,7 @@ components:
         - status
     Part:
       type: object
-      required: [id, publicId, donorId, donorLabel, name, code, price, status, createdAt, updatedAt]
+      required: [id, publicId, donorId, donorLabel, name, code, price, status, version, createdAt, updatedAt]
       properties:
         id:
           type: integer
@@ -631,6 +631,9 @@ components:
         updatedAt:
           type: string
           format: date-time
+        version:
+          type: integer
+          minimum: 1
     PartsResponse:
       type: array
       items:
@@ -657,7 +660,11 @@ components:
           type: string
     PartUpdate:
       type: object
+      required: [expectedVersion]
       properties:
+        expectedVersion:
+          type: integer
+          minimum: 1
         name:
           type: string
           minLength: 1

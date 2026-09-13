@@ -69,7 +69,7 @@ export function PublicPartPage() {
     if (!part) return false;
     setActionError(undefined);
     try {
-      const updated = await updatePart(part.id, { status });
+      const updated = await updatePart(part.id, { status, expectedVersion: part.version });
       latestRequest.current += 1;
       setPart(updated);
       setState('ready');

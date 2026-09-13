@@ -49,6 +49,7 @@ export type Part = {
   createdAt: string;
   soldAt?: string;
   updatedAt?: string;
+  version?: number;
 };
 
 export type PartsCar = {

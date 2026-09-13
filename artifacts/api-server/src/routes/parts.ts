@@ -12,8 +12,8 @@ import {
   UpdatePartParams,
   UpdatePartResponse,
 } from "@workspace/api-zod";
-import { db, partsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { db, donorsTable, partsTable, syncTombstonesTable } from "@workspace/db";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
@@ -32,7 +32,29 @@ function serialize(row: typeof partsTable.$inferSelect) {
     soldAt: row.soldAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    version: row.version,
   };
+}
+
+async function isTombstoned(entity: string, recordId: string) {
+  const [row] = await db
+    .select({ recordId: syncTombstonesTable.recordId })
+    .from(syncTombstonesTable)
+    .where(and(
+      eq(syncTombstonesTable.entity, entity),
+      eq(syncTombstonesTable.recordId, recordId),
+    ))
+    .limit(1);
+  return Boolean(row);
+}
+
+async function donorExists(donorId: string) {
+  const [row] = await db
+    .select({ id: donorsTable.id })
+    .from(donorsTable)
+    .where(eq(donorsTable.id, donorId))
+    .limit(1);
+  return Boolean(row) && !(await isTombstoned("donor", donorId));
 }
 
 router.get("/parts", async (req, res): Promise<void> => {
@@ -44,6 +66,10 @@ router.post("/parts", async (req, res): Promise<void> => {
   const body = CreatePartBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: "Neteisingi detalės duomenys." });
+    return;
+  }
+  if (!(await donorExists(body.data.donorId))) {
+    res.status(409).json({ error: "Detalės donoras nerastas serveryje. Pirmiausia išsaugokite donorą." });
     return;
   }
 
@@ -69,10 +95,21 @@ router.post("/parts/import", async (req, res): Promise<void> => {
   // select-then-insert check here: two browsers can import the same old
   // localStorage record at the same time.
   if (body.data.parts.length) {
+    const validParts = [];
+    for (const part of body.data.parts) {
+      if (await isTombstoned("part-legacy", part.legacyId)) continue;
+      if (!(await donorExists(part.donorId))) continue;
+      validParts.push(part);
+    }
+    if (validParts.length === 0) {
+      const rows = await db.select().from(partsTable).orderBy(desc(partsTable.createdAt));
+      res.json(ImportPartsResponse.parse(rows.map(serialize)));
+      return;
+    }
     await db
       .insert(partsTable)
       .values(
-        body.data.parts.map((part) => ({
+        validParts.map((part) => ({
           publicId: randomBytes(18).toString("base64url"),
           legacyId: part.legacyId,
           donorId: part.donorId,
@@ -100,6 +137,23 @@ router.patch("/parts/:partId", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Neteisingi detalės duomenys." });
     return;
   }
+  const current = await db
+    .select()
+    .from(partsTable)
+    .where(eq(partsTable.id, params.data.partId))
+    .limit(1);
+  if (!current[0]) {
+    res.status(404).json({ error: "Detalė nerasta." });
+    return;
+  }
+  if (current[0].version !== body.data.expectedVersion) {
+    res.status(409).json({
+      error: "Detalė buvo pakeista kitame įrenginyje. Įkelkite naujausius duomenis ir pakartokite.",
+      code: "VERSION_CONFLICT",
+      current: serialize(current[0]),
+    });
+    return;
+  }
 
   const values: Partial<typeof partsTable.$inferInsert> = {};
   if (body.data.name !== undefined) values.name = body.data.name;
@@ -110,10 +164,14 @@ router.patch("/parts/:partId", async (req, res): Promise<void> => {
     values.status = body.data.status;
     values.soldAt = body.data.status === "sold" ? new Date() : null;
   }
+  (values as unknown as Record<string, unknown>).version = sql`${partsTable.version} + 1`;
   const [updated] = await db
     .update(partsTable)
     .set(values)
-    .where(eq(partsTable.id, params.data.partId))
+    .where(and(
+      eq(partsTable.id, params.data.partId),
+      eq(partsTable.version, body.data.expectedVersion),
+    ))
     .returning();
   if (!updated) {
     res.status(404).json({ error: "Detalė nerasta." });
@@ -128,10 +186,17 @@ router.delete("/parts/:partId", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Neteisingas detalės identifikatorius." });
     return;
   }
-  const [deleted] = await db
-    .delete(partsTable)
-    .where(eq(partsTable.id, params.data.partId))
-    .returning({ id: partsTable.id });
+  const [deleted] = await db.transaction(async (tx) => {
+    const [part] = await tx.select().from(partsTable).where(eq(partsTable.id, params.data.partId)).limit(1);
+    if (!part) return [];
+    const result = await tx.delete(partsTable).where(eq(partsTable.id, params.data.partId)).returning({ id: partsTable.id });
+    if (result[0] && part.legacyId) {
+      await tx.insert(syncTombstonesTable)
+        .values({ entity: "part-legacy", recordId: part.legacyId })
+        .onConflictDoNothing();
+    }
+    return result;
+  });
   if (!deleted) {
     res.status(404).json({ error: "Detalė nerasta." });
     return;

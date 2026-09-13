@@ -22,4 +22,6 @@ export interface Part {
   soldAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** @minimum 1 */
+  version: number;
 }

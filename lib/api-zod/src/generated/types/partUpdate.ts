@@ -8,6 +8,8 @@
 import type { PartUpdateStatus } from './partUpdateStatus';
 
 export interface PartUpdate {
+  /** @minimum 1 */
+  expectedVersion: number;
   /** @minLength 1 */
   name?: string;
   code?: string;
