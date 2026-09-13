@@ -3,8 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
-import { getAccessMe, inviteAccessUser, listAccessUsers, updateAccessUser } from '@workspace/api-client-react';
-import type { AccessUser } from '@workspace/api-client-react';
+import { createPart, deletePart as deletePartApi, getAccessMe, getPublicPart, importParts, inviteAccessUser, listAccessUsers, listParts, updateAccessUser, updatePart as updatePartApi } from '@workspace/api-client-react';
+import type { AccessUser, Part as ApiPart } from '@workspace/api-client-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -28,6 +29,7 @@ import {
   Package,
   Pencil,
   Plus,
+  QrCode,
   Search,
   RefreshCw,
   Save,
@@ -40,7 +42,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 
 type Expense = { id: string; label: string; amount: number; date: string; category?: string };
 type Vehicle = {
@@ -67,6 +69,8 @@ type Vehicle = {
 };
 type Part = {
   id: string;
+  dbId?: number;
+  publicId?: string;
   name: string;
   code: string;
   price: number;
@@ -74,6 +78,7 @@ type Part = {
   location?: string;
   createdAt: string;
   soldAt?: string;
+  updatedAt?: string;
 };
 type PartsCar = {
   id: string;
@@ -243,6 +248,26 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function apiPartToPart(part: ApiPart): Part {
+  return {
+    id: String(part.id),
+    dbId: part.id,
+    publicId: part.publicId,
+    name: part.name,
+    code: part.code,
+    price: part.price,
+    status: part.status,
+    location: part.location ?? undefined,
+    createdAt: part.createdAt,
+    soldAt: part.soldAt ?? undefined,
+    updatedAt: part.updatedAt,
+  };
+}
+
+function partUrl(publicId: string) {
+  return `${window.location.origin}${basePath}/detale/${publicId}`;
+}
+
 function monthLabel(value = today()) {
   return new Intl.DateTimeFormat('lt-LT', { month: 'long', year: 'numeric' }).format(new Date(value));
 }
@@ -268,6 +293,43 @@ function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
 
   useEffect(() => localStorage.setItem(VEHICLES_KEY, JSON.stringify(vehicles)), [vehicles]);
   useEffect(() => localStorage.setItem(PARTS_KEY, JSON.stringify(partsCars)), [partsCars]);
+  useEffect(() => {
+    let cancelled = false;
+    async function syncParts() {
+      try {
+        const legacyParts = partsCars.flatMap((car) =>
+          car.parts
+            .filter((part) => !part.dbId)
+            .map((part) => ({
+              legacyId: part.id,
+              donorId: car.id,
+              donorLabel: `${car.year} ${car.make} ${car.model}`,
+              name: part.name,
+              code: part.code,
+              price: part.price,
+              status: part.status,
+              ...(part.location ? { location: part.location } : {}),
+              createdAt: new Date(part.createdAt).toISOString(),
+              ...(part.soldAt ? { soldAt: new Date(part.soldAt).toISOString() } : {}),
+            })),
+        );
+        const serverParts = legacyParts.length
+          ? await importParts({ parts: legacyParts })
+          : await listParts();
+        if (cancelled) return;
+        setPartsCars((current) => current.map((car) => ({
+          ...car,
+          parts: serverParts.filter((part) => part.donorId === car.id).map(apiPartToPart),
+        })));
+      } catch (error) {
+        if (!cancelled) flash(error instanceof Error ? error.message : 'Nepavyko sinchronizuoti detalių.');
+      }
+    }
+    void syncParts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(undefined), 2800);
@@ -354,34 +416,62 @@ function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
     setModal(null);
   }
 
-  function addPart(carId: string, payload: Omit<Part, 'id' | 'createdAt' | 'status'>) {
-    setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: [...car.parts, { ...payload, id: uid('part'), createdAt: today(), status: 'inventory' }] } : car));
-    setModal(null);
-    flash('Detalė pridėta į sandėlį');
+  async function addPart(carId: string, payload: Pick<Part, 'name' | 'code' | 'price' | 'location'>) {
+    const car = partsCars.find((item) => item.id === carId);
+    if (!car) return;
+    try {
+      const created = await createPart({
+        donorId: car.id,
+        donorLabel: `${car.year} ${car.make} ${car.model}`,
+        name: payload.name,
+        code: payload.code,
+        price: payload.price,
+        ...(payload.location ? { location: payload.location } : {}),
+      });
+      setPartsCars((current) => current.map((item) => item.id === carId ? { ...item, parts: [...item.parts, apiPartToPart(created)] } : item));
+      setModal(null);
+      flash('Detalė pridėta — nuolatinis QR kodas sukurtas');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Detalės pridėti nepavyko.');
+    }
   }
 
-  function togglePart(carId: string, partId: string) {
-    setPartsCars((current) => current.map((car) => car.id === carId ? {
-      ...car,
-      parts: car.parts.map((part) => part.id === partId
-        ? { ...part, status: part.status === 'inventory' ? 'sold' : 'inventory', soldAt: part.status === 'inventory' ? today() : undefined }
-        : part),
-    } : car));
-    flash('Detalės būsena atnaujinta');
+  async function togglePart(carId: string, partId: string) {
+    const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
+    if (!part?.dbId) return;
+    try {
+      const updated = await updatePartApi(part.dbId, { status: part.status === 'inventory' ? 'sold' : 'inventory' });
+      setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.map((item) => item.id === partId ? apiPartToPart(updated) : item) } : car));
+      flash('Detalės būsena atnaujinta');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Būsenos pakeisti nepavyko.');
+    }
   }
 
-  function updatePart(carId: string, partId: string, payload: Omit<Part, 'id' | 'createdAt' | 'status' | 'soldAt'>) {
-    setPartsCars((current) => current.map((car) => car.id === carId
-      ? { ...car, parts: car.parts.map((part) => part.id === partId ? { ...part, ...payload } : part) }
-      : car));
-    setModal(null);
-    flash('Detalės duomenys atnaujinti');
+  async function updatePart(carId: string, partId: string, payload: Pick<Part, 'name' | 'code' | 'price' | 'location'>) {
+    const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
+    if (!part?.dbId) return;
+    try {
+      const updated = await updatePartApi(part.dbId, { ...payload, location: payload.location ?? null });
+      setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.map((item) => item.id === partId ? apiPartToPart(updated) : item) } : car));
+      setModal(null);
+      flash('Detalės duomenys atnaujinti — QR kodas nepasikeitė');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Detalės atnaujinti nepavyko.');
+    }
   }
 
-  function deletePart(carId: string, partId: string) {
+  async function deletePart(carId: string, partId: string) {
     if (!window.confirm('Pašalinti šią detalę iš sandėlio?')) return;
-    setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.filter((part) => part.id !== partId) } : car));
-    flash('Detalė pašalinta');
+    const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
+    if (!part?.dbId) return;
+    try {
+      await deletePartApi(part.dbId);
+      setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.filter((item) => item.id !== partId) } : car));
+      flash('Detalė pašalinta');
+    } catch (error) {
+      flash(error instanceof Error ? error.message : 'Detalės pašalinti nepavyko.');
+    }
   }
 
   function deletePartsCar(id: string) {
@@ -413,6 +503,7 @@ function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
           {page === 'dashboard' && <Dashboard totals={totals} activity={activity} vehicles={vehicles} partsCars={partsCars} navigate={setLocation} can={can} />}
           {page === 'vehicles' && <VehiclesPage vehicles={vehicles} openModal={openModal} deleteVehicle={deleteVehicle} can={can} />}
           {page === 'parts' && <PartsPage partsCars={partsCars} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />}
+           {page === 'parts' && <PartQrCatalog partsCars={partsCars} />}
           {page === 'settings' && <SettingsPage />}
         </div>
       </main>
@@ -538,6 +629,25 @@ function PartsPage({ partsCars, openModal, togglePart, deletePartsCar, deletePar
   const inventoryCount = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'inventory').length, 0);
   const soldCount = partsCars.reduce((sum, car) => sum + car.parts.filter((part) => part.status === 'sold').length, 0);
   return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 02" title="Dalys" body="Donorai kelyje į antrą gyvenimą. Parduotų detalių pinigai grįžta į knygą." action={can('manageDonors') ? <Plus size={17} /> : undefined} actionLabel="Pridėti donorą" onAction={can('manageDonors') ? () => openModal('partsCar') : undefined} /><div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti donorų..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-parts" /></label><div className="flex items-center justify-between gap-3"><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'inventory', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-parts-${option}`}>{option === 'all' ? 'Visi' : option === 'inventory' ? 'Sandėlyje' : 'Parduotos'}</button>)}</div><span className="hidden font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:block">{inventoryCount} sandėlyje · {soldCount} parduotos</span></div></div>{filtered.length === 0 ? <EmptyState title="Donorų neradome" body="Pridėk automobilį ardymui arba pakeisk paiešką." action={can('manageDonors') ? <button onClick={() => openModal('partsCar')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-donor"><Plus size={16} /> Pridėti donorą</button> : undefined} /> : <div className="space-y-5">{filtered.map((car, index) => <PartsCarCard key={car.id} car={car} index={index} openModal={openModal} togglePart={togglePart} deletePartsCar={deletePartsCar} deletePart={deletePart} can={can} />)}</div>}</section>;
+}
+
+function PartQrCatalog({ partsCars }: { partsCars: PartsCar[] }) {
+  const parts = partsCars.flatMap((car) => car.parts.map((part) => ({ car, part }))).filter(({ part }) => part.publicId);
+  if (!parts.length) return null;
+  return <section className="mx-auto mt-8 max-w-[1480px]">
+    <div className="mb-4 flex items-end justify-between gap-4">
+      <div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Nuolatiniai identifikatoriai</p><h2 className="mt-1 text-xl font-bold">Detalių QR kortelės</h2><p className="mt-1 text-sm text-muted-foreground">Kodas nekinta redaguojant kainą, vietą ar būseną.</p></div>
+      <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">{parts.length} QR</span>
+    </div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {parts.map(({ car, part }) => <article key={part.id} className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+        <Link href={`/detale/${part.publicId}`} className="shrink-0 rounded-lg border border-border bg-white p-2" aria-label={`Atidaryti ${part.name} QR puslapį`}>
+          <QRCodeSVG value={partUrl(part.publicId!)} size={72} level="M" />
+        </Link>
+        <div className="min-w-0"><p className="truncate font-bold">{part.name}</p><p className="mt-1 truncate text-xs text-muted-foreground">{car.year} {car.make} {car.model}</p><p className="mt-2 break-all font-mono-ui text-[9px] text-muted-foreground">{part.publicId}</p><Link href={`/detale/${part.publicId}`} className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-secondary hover:underline"><QrCode size={13} /> Atidaryti kortelę</Link></div>
+      </article>)}
+    </div>
+  </section>;
 }
 
 function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, deletePart, can }: { car: PartsCar; index: number; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: PermissionKey) => boolean }) {
@@ -705,7 +815,7 @@ function PartsCarModal({ car, close, save }: { car?: PartsCar; close: () => void
   return <Modal title={car ? 'Redaguoti donorą' : 'Naujas donoras'} eyebrow="Dalių žurnalas" close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6"><div className="sm:col-span-2 rounded-lg border border-secondary/20 bg-accent/45 px-3 py-2.5 text-xs leading-5 text-accent-foreground">Donoro vertė atsiperka palaipsniui — pažymėk kiekvieną parduotą detalę ir matysi realų atsipirkimą.</div><Field label="Metai"><input required type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} className={inputClass} data-testid="input-donor-year" /></Field><Field label="Rida, km"><input required type="number" value={form.mileage} onChange={(e) => setForm({ ...form, mileage: e.target.value })} className={inputClass} data-testid="input-donor-mileage" /></Field><Field label="Markė"><input required value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} className={inputClass} placeholder="pvz. Volkswagen" data-testid="input-donor-make" /></Field><Field label="Modelis"><input required value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className={inputClass} placeholder="pvz. Passat B6" data-testid="input-donor-model" /></Field><Field label="Variklis"><input required value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} className={inputClass} placeholder="pvz. 2.0 TDI · 103 kW" data-testid="input-donor-engine" /></Field><Field label="Kuras"><div className="relative"><select value={form.fuel} onChange={(e) => setForm({ ...form, fuel: e.target.value })} className={selectClass} data-testid="select-donor-fuel"><option>Dyzelinas</option><option>Benzinas</option><option>Hibridas</option><option>Elektra</option></select><ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-muted-foreground" /></div></Field><Field label="Pirkimo kaina, EUR"><input required type="number" min="0" step="0.01" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} className={inputClass} data-testid="input-donor-purchase-price" /></Field><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Lentyna B3" data-testid="input-donor-location" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4 sm:col-span-2"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-donor">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-donor">{car ? 'Išsaugoti pakeitimus' : 'Pridėti donorą'}</button></div></form></Modal>;
 }
 
-function PartModal({ car, part, close, save, update }: { car?: PartsCar; part?: Part; close: () => void; save: (carId: string, payload: Omit<Part, 'id' | 'createdAt' | 'status'>) => void; update: (carId: string, partId: string, payload: Omit<Part, 'id' | 'createdAt' | 'status' | 'soldAt'>) => void }) {
+function PartModal({ car, part, close, save, update }: { car?: PartsCar; part?: Part; close: () => void; save: (carId: string, payload: Pick<Part, 'name' | 'code' | 'price' | 'location'>) => void; update: (carId: string, partId: string, payload: Pick<Part, 'name' | 'code' | 'price' | 'location'>) => void }) {
   const [form, setForm] = useState({ name: part?.name ?? '', code: part?.code ?? '', price: String(part?.price ?? ''), location: part?.location ?? '' });
   function submit(event: FormEvent) { event.preventDefault(); if (!car) return; const payload = { name: form.name, code: form.code, price: Number(form.price), location: form.location || undefined }; if (part) update(car.id, part.id, payload); else save(car.id, payload); }
   return <Modal title={part ? 'Redaguoti detalę' : 'Pridėti detalę'} eyebrow={`${car?.make ?? ''} ${car?.model ?? ''}`} close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:p-6"><Field label="Detalės pavadinimas"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="pvz. Generatorius" data-testid="input-part-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="OEM kodas"><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={inputClass} placeholder="nebūtina" data-testid="input-part-code" /></Field><Field label="Kaina, EUR"><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} placeholder="0,00" data-testid="input-part-price" /></Field></div><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Lentyna B3 / dėžė 12" data-testid="input-part-location" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-part">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-part">{part ? 'Išsaugoti pakeitimus' : 'Pridėti detalę'}</button></div></form></Modal>;
@@ -803,11 +913,64 @@ function ProtectedApp() {
   return <AccessGate />;
 }
 
+function PublicPartPage() {
+  const { publicId } = useParams<{ publicId: string }>();
+  const [part, setPart] = useState<ApiPart>();
+  const [state, setState] = useState<'loading' | 'ready' | 'not-found' | 'error'>('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPart() {
+      try {
+        const current = await getPublicPart(publicId);
+        if (!cancelled) {
+          setPart(current);
+          setState('ready');
+        }
+      } catch (error) {
+        if (cancelled) return;
+        const status = typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
+        setState(status === 404 ? 'not-found' : 'error');
+      }
+    }
+    void loadPart();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicId]);
+
+  return <main className="noise min-h-[100dvh] bg-background px-5 py-10 text-foreground">
+    <div className="mx-auto max-w-2xl">
+      <Link href="/" className="mb-8 inline-flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-mono-ui text-sm font-bold text-primary-foreground">RM</span>
+        <span><span className="block text-sm font-bold">RM Automotive</span><span className="font-mono-ui text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Detalės kortelė</span></span>
+      </Link>
+      {state === 'loading' && <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground shadow-sm"><span className="mx-auto mb-4 block h-3 w-3 animate-pulse rounded-full bg-primary" />Kraunami naujausi detalės duomenys...</div>}
+      {state === 'not-found' && <EmptyState title="Detalė nerasta" body="Šis QR identifikatorius negalioja arba detalė buvo pašalinta." />}
+      {state === 'error' && <EmptyState title="Duomenų įkelti nepavyko" body="Patikrink interneto ryšį ir pabandyk dar kartą." />}
+      {state === 'ready' && part && <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
+        <div className="flex flex-col gap-6 border-b border-border p-6 sm:flex-row sm:items-center">
+          <div className="w-fit rounded-xl border border-border bg-white p-3"><QRCodeSVG value={partUrl(part.publicId)} size={132} level="M" /></div>
+          <div><div className={`mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}</div><h1 className="text-2xl font-bold sm:text-3xl">{part.name}</h1><p className="mt-2 text-sm text-muted-foreground">{part.donorLabel}</p></div>
+        </div>
+        <dl className="grid sm:grid-cols-2">
+          <div className="border-b border-border p-5 sm:border-r"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">OEM kodas</dt><dd className="mt-2 font-mono-ui text-sm font-bold">{part.code || 'Nenurodytas'}</dd></div>
+          <div className="border-b border-border p-5"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Kaina</dt><dd className="mt-2 font-mono-ui text-lg font-bold">{money(part.price)}</dd></div>
+          <div className="border-b border-border p-5 sm:border-b-0 sm:border-r"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Laikymo vieta</dt><dd className="mt-2 text-sm font-semibold">{part.location || 'Nenurodyta'}</dd></div>
+          <div className="p-5"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Atnaujinta</dt><dd className="mt-2 text-sm font-semibold">{shortDate(part.updatedAt)}</dd></div>
+        </dl>
+        <div className="border-t border-border bg-muted/35 px-5 py-4"><p className="break-all font-mono-ui text-[9px] uppercase tracking-wide text-muted-foreground">QR ID · {part.publicId}</p></div>
+      </article>}
+    </div>
+  </main>;
+}
+
 function Router() {
   return <Switch>
     <Route path="/" component={HomeRoute} />
     <Route path="/sign-in/*?" component={SignInPage} />
     <Route path="/sign-up/*?" component={SignUpPage} />
+    <Route path="/detale/:publicId" component={PublicPartPage} />
     <Route path="/automobiliai" component={ProtectedApp} />
     <Route path="/dalys" component={ProtectedApp} />
     <Route path="/nustatymai" component={ProtectedApp} />

@@ -24,6 +24,11 @@ import type {
   AccessUsersResponse,
   HealthStatus,
   InviteAccessUserBody,
+  Part,
+  PartImportInput,
+  PartInput,
+  PartUpdate,
+  PartsResponse,
   UpdateAccessUserBody
 } from './api.schemas';
 
@@ -428,4 +433,443 @@ export const useUpdateAccessUser = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getUpdateAccessUserMutationOptions(options));
     }
+
+export const getListPartsUrl = () => {
+
+
+
+
+  return `/api/parts`
+}
+
+/**
+ * @summary List all parts
+ */
+export const listParts = async ( options?: Parameters<typeof customFetch>[1]): Promise<PartsResponse> => {
+
+  return customFetch<PartsResponse>(getListPartsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPartsQueryKey = () => {
+    return [
+    `/api/parts`
+    ] as const;
+    }
+
+
+export const getListPartsQueryOptions = <TData = Awaited<ReturnType<typeof listParts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPartsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listParts>>> = ({ signal }) => listParts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listParts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPartsQueryResult = NonNullable<Awaited<ReturnType<typeof listParts>>>
+export type ListPartsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all parts
+ */
+
+export function useListParts<TData = Awaited<ReturnType<typeof listParts>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listParts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPartsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePartUrl = () => {
+
+
+
+
+  return `/api/parts`
+}
+
+/**
+ * @summary Create a part with a permanent public identifier
+ */
+export const createPart = async (partInput: PartInput, options?: Parameters<typeof customFetch>[1]): Promise<Part> => {
+
+  return customFetch<Part>(getCreatePartUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(partInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePartMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPart>>, TError,{data: BodyType<PartInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPart>>, TError,{data: BodyType<PartInput>}, TContext> => {
+
+const mutationKey = ['createPart'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPart>>, {data: BodyType<PartInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPart(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePartMutationResult = NonNullable<Awaited<ReturnType<typeof createPart>>>
+    export type CreatePartMutationBody = BodyType<PartInput>
+    export type CreatePartMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a part with a permanent public identifier
+ */
+export const useCreatePart = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPart>>, TError,{data: BodyType<PartInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPart>>,
+        TError,
+        {data: BodyType<PartInput>},
+        TContext
+      > => {
+      return useMutation(getCreatePartMutationOptions(options));
+    }
+
+export const getImportPartsUrl = () => {
+
+
+
+
+  return `/api/parts/import`
+}
+
+/**
+ * @summary Import existing client-side parts
+ */
+export const importParts = async (partImportInput: PartImportInput, options?: Parameters<typeof customFetch>[1]): Promise<PartsResponse> => {
+
+  return customFetch<PartsResponse>(getImportPartsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(partImportInput)
+  }
+);}
+
+
+
+
+
+export const getImportPartsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importParts>>, TError,{data: BodyType<PartImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importParts>>, TError,{data: BodyType<PartImportInput>}, TContext> => {
+
+const mutationKey = ['importParts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importParts>>, {data: BodyType<PartImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importParts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportPartsMutationResult = NonNullable<Awaited<ReturnType<typeof importParts>>>
+    export type ImportPartsMutationBody = BodyType<PartImportInput>
+    export type ImportPartsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Import existing client-side parts
+ */
+export const useImportParts = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importParts>>, TError,{data: BodyType<PartImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importParts>>,
+        TError,
+        {data: BodyType<PartImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportPartsMutationOptions(options));
+    }
+
+export const getUpdatePartUrl = (partId: number,) => {
+
+
+
+
+  return `/api/parts/${partId}`
+}
+
+/**
+ * @summary Update a part without changing its public identifier
+ */
+export const updatePart = async (partId: number,
+    partUpdate: PartUpdate, options?: Parameters<typeof customFetch>[1]): Promise<Part> => {
+
+  return customFetch<Part>(getUpdatePartUrl(partId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(partUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdatePartMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePart>>, TError,{partId: number;data: BodyType<PartUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePart>>, TError,{partId: number;data: BodyType<PartUpdate>}, TContext> => {
+
+const mutationKey = ['updatePart'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePart>>, {partId: number;data: BodyType<PartUpdate>}> = (props) => {
+          const {partId,data} = props ?? {};
+
+          return  updatePart(partId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePartMutationResult = NonNullable<Awaited<ReturnType<typeof updatePart>>>
+    export type UpdatePartMutationBody = BodyType<PartUpdate>
+    export type UpdatePartMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a part without changing its public identifier
+ */
+export const useUpdatePart = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePart>>, TError,{partId: number;data: BodyType<PartUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePart>>,
+        TError,
+        {partId: number;data: BodyType<PartUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdatePartMutationOptions(options));
+    }
+
+export const getDeletePartUrl = (partId: number,) => {
+
+
+
+
+  return `/api/parts/${partId}`
+}
+
+/**
+ * @summary Delete a part
+ */
+export const deletePart = async (partId: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeletePartUrl(partId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePartMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePart>>, TError,{partId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePart>>, TError,{partId: number}, TContext> => {
+
+const mutationKey = ['deletePart'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePart>>, {partId: number}> = (props) => {
+          const {partId} = props ?? {};
+
+          return  deletePart(partId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePartMutationResult = NonNullable<Awaited<ReturnType<typeof deletePart>>>
+
+    export type DeletePartMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a part
+ */
+export const useDeletePart = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePart>>, TError,{partId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePart>>,
+        TError,
+        {partId: number},
+        TContext
+      > => {
+      return useMutation(getDeletePartMutationOptions(options));
+    }
+
+export const getGetPublicPartUrl = (publicId: string,) => {
+
+
+
+
+  return `/api/public/parts/${publicId}`
+}
+
+/**
+ * @summary Get the latest public details for a QR identifier
+ */
+export const getPublicPart = async (publicId: string, options?: Parameters<typeof customFetch>[1]): Promise<Part> => {
+
+  return customFetch<Part>(getGetPublicPartUrl(publicId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicPartQueryKey = (publicId: string,) => {
+    return [
+    `/api/public/parts/${publicId}`
+    ] as const;
+    }
+
+
+export const getGetPublicPartQueryOptions = <TData = Awaited<ReturnType<typeof getPublicPart>>, TError = ErrorType<void>>(publicId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicPart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicPartQueryKey(publicId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicPart>>> = ({ signal }) => getPublicPart(publicId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: publicId !== null && publicId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicPart>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicPartQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicPart>>>
+export type GetPublicPartQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the latest public details for a QR identifier
+ */
+
+export function useGetPublicPart<TData = Awaited<ReturnType<typeof getPublicPart>>, TError = ErrorType<void>>(
+ publicId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicPart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicPartQueryOptions(publicId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

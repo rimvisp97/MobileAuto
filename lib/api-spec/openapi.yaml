@@ -90,6 +90,111 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccessUser"
+  /parts:
+    get:
+      operationId: listParts
+      tags: [parts]
+      summary: List all parts
+      responses:
+        "200":
+          description: Parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartsResponse"
+    post:
+      operationId: createPart
+      tags: [parts]
+      summary: Create a part with a permanent public identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartInput"
+      responses:
+        "201":
+          description: Created part
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Part"
+  /parts/import:
+    post:
+      operationId: importParts
+      tags: [parts]
+      summary: Import existing client-side parts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartImportInput"
+      responses:
+        "200":
+          description: Imported and existing parts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartsResponse"
+  /parts/{partId}:
+    patch:
+      operationId: updatePart
+      tags: [parts]
+      summary: Update a part without changing its public identifier
+      parameters:
+        - name: partId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PartUpdate"
+      responses:
+        "200":
+          description: Updated part
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Part"
+    delete:
+      operationId: deletePart
+      tags: [parts]
+      summary: Delete a part
+      parameters:
+        - name: partId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Part deleted
+  /public/parts/{publicId}:
+    get:
+      operationId: getPublicPart
+      tags: [parts]
+      summary: Get the latest public details for a QR identifier
+      parameters:
+        - name: publicId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{20,80}$"
+      responses:
+        "200":
+          description: Current part details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Part"
+        "404":
+          description: Part not found
 components:
   schemas:
     HealthStatus:
@@ -159,4 +264,117 @@ components:
           $ref: "#/components/schemas/AccessPermissions"
       required:
         - status
+    Part:
+      type: object
+      required: [id, publicId, donorId, donorLabel, name, code, price, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        publicId:
+          type: string
+        donorId:
+          type: string
+        donorLabel:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        price:
+          type: number
+        status:
+          type: string
+          enum: [inventory, sold]
+        location:
+          type: ["string", "null"]
+        soldAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PartsResponse:
+      type: array
+      items:
+        $ref: "#/components/schemas/Part"
+    PartInput:
+      type: object
+      required: [donorId, donorLabel, name, code, price]
+      properties:
+        donorId:
+          type: string
+          minLength: 1
+        donorLabel:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        location:
+          type: string
+    PartUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [inventory, sold]
+        location:
+          type: ["string", "null"]
+    PartImportItem:
+      type: object
+      required: [legacyId, donorId, donorLabel, name, code, price, status, createdAt]
+      properties:
+        legacyId:
+          type: string
+          minLength: 1
+        donorId:
+          type: string
+          minLength: 1
+        donorLabel:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        code:
+          type: string
+        price:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [inventory, sold]
+        location:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        soldAt:
+          type: string
+          format: date-time
+    PartImportInput:
+      type: object
+      required: [parts]
+      properties:
+        parts:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: "#/components/schemas/PartImportItem"
 

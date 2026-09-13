@@ -95,3 +95,175 @@ export const UpdateAccessUserResponse = zod.object({
 })
 
 
+/**
+ * @summary List all parts
+ */
+export const ListPartsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "publicId": zod.string(),
+  "donorId": zod.string(),
+  "donorLabel": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "price": zod.number(),
+  "status": zod.enum(['inventory', 'sold']),
+  "location": zod.string().nullish(),
+  "soldAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListPartsResponse = zod.array(ListPartsResponseItem)
+
+
+/**
+ * @summary Create a part with a permanent public identifier
+ */
+
+
+
+export const createPartBodyPriceMin = 0;
+
+
+
+export const CreatePartBody = zod.object({
+  "donorId": zod.string().min(1),
+  "donorLabel": zod.string().min(1),
+  "name": zod.string().min(1),
+  "code": zod.string(),
+  "price": zod.number().min(createPartBodyPriceMin),
+  "location": zod.string().optional()
+})
+
+export const CreatePartResponse = zod.object({
+  "id": zod.number().int(),
+  "publicId": zod.string(),
+  "donorId": zod.string(),
+  "donorLabel": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "price": zod.number(),
+  "status": zod.enum(['inventory', 'sold']),
+  "location": zod.string().nullish(),
+  "soldAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Import existing client-side parts
+ */
+
+
+
+
+export const importPartsBodyPartsItemPriceMin = 0;
+
+export const importPartsBodyPartsMax = 1000;
+
+
+
+export const ImportPartsBody = zod.object({
+  "parts": zod.array(zod.object({
+  "legacyId": zod.string().min(1),
+  "donorId": zod.string().min(1),
+  "donorLabel": zod.string().min(1),
+  "name": zod.string().min(1),
+  "code": zod.string(),
+  "price": zod.number().min(importPartsBodyPartsItemPriceMin),
+  "status": zod.enum(['inventory', 'sold']),
+  "location": zod.string().optional(),
+  "createdAt": zod.coerce.date(),
+  "soldAt": zod.coerce.date().optional()
+})).max(importPartsBodyPartsMax)
+})
+
+export const ImportPartsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "publicId": zod.string(),
+  "donorId": zod.string(),
+  "donorLabel": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "price": zod.number(),
+  "status": zod.enum(['inventory', 'sold']),
+  "location": zod.string().nullish(),
+  "soldAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ImportPartsResponse = zod.array(ImportPartsResponseItem)
+
+
+/**
+ * @summary Update a part without changing its public identifier
+ */
+export const UpdatePartParams = zod.object({
+  "partId": zod.coerce.number().int()
+})
+
+
+export const updatePartBodyPriceMin = 0;
+
+
+
+export const UpdatePartBody = zod.object({
+  "name": zod.string().min(1).optional(),
+  "code": zod.string().optional(),
+  "price": zod.number().min(updatePartBodyPriceMin).optional(),
+  "status": zod.enum(['inventory', 'sold']).optional(),
+  "location": zod.string().nullish()
+})
+
+export const UpdatePartResponse = zod.object({
+  "id": zod.number().int(),
+  "publicId": zod.string(),
+  "donorId": zod.string(),
+  "donorLabel": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "price": zod.number(),
+  "status": zod.enum(['inventory', 'sold']),
+  "location": zod.string().nullish(),
+  "soldAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a part
+ */
+export const DeletePartParams = zod.object({
+  "partId": zod.coerce.number().int()
+})
+
+export const DeletePartResponse = zod.void()
+
+
+/**
+ * @summary Get the latest public details for a QR identifier
+ */
+export const getPublicPartPathPublicIdRegExp = new RegExp('^[A-Za-z0-9_-]{20,80}$');
+
+
+export const GetPublicPartParams = zod.object({
+  "publicId": zod.coerce.string().regex(getPublicPartPathPublicIdRegExp)
+})
+
+export const GetPublicPartResponse = zod.object({
+  "id": zod.number().int(),
+  "publicId": zod.string(),
+  "donorId": zod.string(),
+  "donorLabel": zod.string(),
+  "name": zod.string(),
+  "code": zod.string(),
+  "price": zod.number(),
+  "status": zod.enum(['inventory', 'sold']),
+  "location": zod.string().nullish(),
+  "soldAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+

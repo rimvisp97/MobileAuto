@@ -59,3 +59,93 @@ export interface UpdateAccessUserBody {
   permissions?: AccessPermissions;
 }
 
+export type PartStatus = typeof PartStatus[keyof typeof PartStatus];
+
+
+export const PartStatus = {
+  inventory: 'inventory',
+  sold: 'sold',
+} as const;
+
+export interface Part {
+  id: number;
+  publicId: string;
+  donorId: string;
+  donorLabel: string;
+  name: string;
+  code: string;
+  price: number;
+  status: PartStatus;
+  /** @nullable */
+  location?: string | null;
+  /** @nullable */
+  soldAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PartsResponse = Part[];
+
+export interface PartInput {
+  /** @minLength 1 */
+  donorId: string;
+  /** @minLength 1 */
+  donorLabel: string;
+  /** @minLength 1 */
+  name: string;
+  code: string;
+  /** @minimum 0 */
+  price: number;
+  location?: string;
+}
+
+export type PartUpdateStatus = typeof PartUpdateStatus[keyof typeof PartUpdateStatus];
+
+
+export const PartUpdateStatus = {
+  inventory: 'inventory',
+  sold: 'sold',
+} as const;
+
+export interface PartUpdate {
+  /** @minLength 1 */
+  name?: string;
+  code?: string;
+  /** @minimum 0 */
+  price?: number;
+  status?: PartUpdateStatus;
+  /** @nullable */
+  location?: string | null;
+}
+
+export type PartImportItemStatus = typeof PartImportItemStatus[keyof typeof PartImportItemStatus];
+
+
+export const PartImportItemStatus = {
+  inventory: 'inventory',
+  sold: 'sold',
+} as const;
+
+export interface PartImportItem {
+  /** @minLength 1 */
+  legacyId: string;
+  /** @minLength 1 */
+  donorId: string;
+  /** @minLength 1 */
+  donorLabel: string;
+  /** @minLength 1 */
+  name: string;
+  code: string;
+  /** @minimum 0 */
+  price: number;
+  status: PartImportItemStatus;
+  location?: string;
+  createdAt: string;
+  soldAt?: string;
+}
+
+export interface PartImportInput {
+  /** @maxItems 1000 */
+  parts: PartImportItem[];
+}
+
