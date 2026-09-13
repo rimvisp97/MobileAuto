@@ -7,14 +7,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { PartLabel, getLabelLayout, isValidLabelDimension, type PartLabelData } from '@/components/part-label';
+import {
+  PartLabel,
+  getLabelLayout,
+  isValidLabelDimension,
+  type LabelLayout,
+  type PartLabelData,
+} from '@/components/part-label';
 import {
   createLocalId,
   DEFAULT_PRINTER_PROFILE,
   loadCustomLabelSizes,
+  loadSelectedLabelSize,
   loadPrinterProfiles,
   PRESET_LABEL_SIZES,
   saveCustomLabelSizes,
+  saveSelectedLabelSize,
   savePrinterProfiles,
   type CustomLabelSize,
   type PrinterProfile,
@@ -30,11 +38,73 @@ type LabelPrintSetupProps = {
 type ProfileDraft = { id?: string; name: string };
 type SizeDraft = { id?: string; name: string; widthMm: string; heightMm: string };
 type LabelGeometry = { status: 'pending' | 'checked'; fits: boolean; reason?: string };
+type FitCandidate = { layout: LabelLayout; fontMm: number };
+type FitResult = { candidate: FitCandidate; score: number };
+type FittingState = {
+  key: string;
+  candidateIndex: number;
+  lowMm: number;
+  highMm: number;
+  probeMm: number;
+  results: FitResult[];
+};
 
 const defaultSizeId = 'preset-60x40';
 
 function fieldClass(hasError = false) {
   return `mt-1 block min-h-9 w-full rounded-lg border bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary ${hasError ? 'border-destructive' : 'border-input'}`;
+}
+
+function layoutWithGeometry(base: LabelLayout, qrMm: number, fontMm: number): LabelLayout {
+  const textWidthMm = base.orientation === 'horizontal'
+    ? Math.max(0, base.textWidthMm + base.qrMm - qrMm)
+    : base.textWidthMm;
+  const textHeightMm = base.orientation === 'vertical'
+    ? Math.max(0, base.textHeightMm + base.qrMm - qrMm)
+    : base.textHeightMm;
+  return {
+    ...base,
+    qrMm,
+    textWidthMm,
+    textHeightMm,
+    textFontMm: fontMm,
+    canPrint: true,
+    blockingReason: undefined,
+  };
+}
+
+function getFitCandidates(base: LabelLayout, widthMm: number, heightMm: number): FitCandidate[] {
+  const innerWidthMm = Math.max(0, widthMm - base.paddingMm * 2);
+  const innerHeightMm = Math.max(0, heightMm - base.paddingMm * 2);
+  const minimumTextHeightMm = base.minimumTextFontMm * base.lineHeight * 4.2;
+  const minimumTextWidthMm = Math.max(7, base.minimumTextFontMm * 4);
+  const maximumQrMm = base.orientation === 'horizontal'
+    ? Math.min(innerHeightMm, innerWidthMm - base.gapMm - minimumTextWidthMm)
+    : Math.min(innerWidthMm, innerHeightMm - base.gapMm - minimumTextHeightMm);
+  // In a vertical label, the baseline QR intentionally starts large. Let the
+  // constrained search try smaller squares too, otherwise a square 100 × 100
+  // label could leave only a few millimetres for its four text fields.
+  const baselineMinimumQrMm = base.orientation === 'vertical'
+    ? Math.min(base.qrMm, innerWidthMm * 0.35)
+    : Math.min(base.qrMm, innerHeightMm * 0.55);
+  const minimumQrMm = Math.max(
+    8,
+    Math.min(baselineMinimumQrMm, Math.max(8, maximumQrMm)),
+  );
+  const usableMaximumQrMm = Math.max(minimumQrMm, maximumQrMm);
+  const qrValues = Array.from({ length: 5 }, (_, index) => {
+    const progress = index / 4;
+    return minimumQrMm + (usableMaximumQrMm - minimumQrMm) * progress;
+  });
+  const uniqueQrValues = Array.from(new Set(qrValues.map((value) => Math.round(value * 100) / 100)));
+  const maximumFontMm = Math.min(
+    32,
+    Math.max(6, Math.min(widthMm, heightMm) * 0.4),
+  );
+  return uniqueQrValues.map((qrMm) => ({
+    layout: layoutWithGeometry(base, qrMm, base.minimumTextFontMm),
+    fontMm: maximumFontMm,
+  }));
 }
 
 function measureLabelGeometry(
@@ -74,9 +144,11 @@ function measureLabelGeometry(
     || label.scrollHeight > label.clientHeight + 1;
   const qr = label.querySelector<HTMLElement>('[data-label-qr="true"]');
   const expectedQrPx = layout.qrMm * root.width / widthMm;
-  const qrTooSmall = qr
-    ? qr.getBoundingClientRect().width < expectedQrPx - tolerance
-      || qr.getBoundingClientRect().height < expectedQrPx - tolerance
+  const qrRect = qr?.getBoundingClientRect();
+  const qrTooSmall = qrRect
+    ? qrRect.width < expectedQrPx - tolerance
+      || qrRect.height < expectedQrPx - tolerance
+      || Math.abs(qrRect.width - qrRect.height) > tolerance
     : true;
   if (childOverflow || scrollOverflow) {
     return { fits: false, reason: 'Tekstas arba QR kodas netelpa pasirinktoje etiketėje.' };
@@ -90,9 +162,9 @@ function measureLabelGeometry(
 function ScaledLabelPreview({
   widthMm,
   heightMm,
-  fontSizeMm,
+  layoutOverride,
   ...data
-}: PartLabelData & { widthMm: number; heightMm: number; fontSizeMm: number }) {
+}: PartLabelData & { widthMm: number; heightMm: number; layoutOverride: LabelLayout }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState({ width: widthMm * 3.7795, height: heightMm * 3.7795, scale: 1 });
@@ -113,7 +185,7 @@ function ScaledLabelPreview({
     const observer = new ResizeObserver(measure);
     observer.observe(stageRef.current);
     return () => observer.disconnect();
-  }, [fontSizeMm, heightMm, widthMm]);
+  }, [heightMm, layoutOverride.qrMm, layoutOverride.textFontMm, widthMm]);
 
   return (
     <div ref={stageRef} className="w-full" data-testid="label-preview-stage">
@@ -126,7 +198,13 @@ function ScaledLabelPreview({
         }}
       >
         <div style={{ width: metrics.width, height: metrics.height, transform: `scale(${metrics.scale})`, transformOrigin: 'top left' }}>
-          <PartLabel ref={labelRef} {...data} widthMm={widthMm} heightMm={heightMm} fontSizeMm={fontSizeMm} />
+          <PartLabel
+            ref={labelRef}
+            {...data}
+            widthMm={widthMm}
+            heightMm={heightMm}
+            layoutOverride={layoutOverride}
+          />
         </div>
       </div>
     </div>
@@ -137,7 +215,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
   const [profiles, setProfiles] = useState<PrinterProfile[]>(loadPrinterProfiles);
   const [customSizes, setCustomSizes] = useState<CustomLabelSize[]>(loadCustomLabelSizes);
   const [selectedProfileId, setSelectedProfileId] = useState(DEFAULT_PRINTER_PROFILE.id);
-  const [sizeId, setSizeId] = useState(defaultSizeId);
+  const [sizeId, setSizeId] = useState(() => loadSelectedLabelSize() ?? defaultSizeId);
   const [manualWidth, setManualWidth] = useState('60');
   const [manualHeight, setManualHeight] = useState('40');
   const [quantity, setQuantity] = useState('1');
@@ -146,16 +224,22 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
   const [profileError, setProfileError] = useState('');
   const [sizeError, setSizeError] = useState('');
   const [printError, setPrintError] = useState('');
+  const [sizeSaveNotice, setSizeSaveNotice] = useState('');
   const [isPrinting, setIsPrinting] = useState(false);
-  const [fittedFontMm, setFittedFontMm] = useState(1.25);
   const [labelGeometry, setLabelGeometry] = useState<LabelGeometry>({
     status: 'pending',
     fits: false,
   });
+  const [fittedLayout, setFittedLayout] = useState<LabelLayout | null>(null);
+  const [fittingState, setFittingState] = useState<FittingState | null>(null);
   const measurementRef = useRef<HTMLDivElement>(null);
+  const manualFocusCountRef = useRef(0);
+  const manualDirtyRef = useRef(false);
+  const manualSaveTimerRef = useRef<number | undefined>(undefined);
 
-  useEffect(() => savePrinterProfiles(profiles), [profiles]);
-  useEffect(() => saveCustomLabelSizes(customSizes), [customSizes]);
+  useEffect(() => () => {
+    if (manualSaveTimerRef.current !== undefined) window.clearTimeout(manualSaveTimerRef.current);
+  }, []);
 
   const selectedProfile = profiles.find((profile) => profile.id === selectedProfileId) ?? profiles[0];
   const selectedSize = sizeId === 'manual'
@@ -170,49 +254,165 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     () => getLabelLayout(printWidthMm, printHeightMm, data),
     [data.code, data.donorName, data.name, data.publicId, data.url, printHeightMm, printWidthMm],
   );
-  useEffect(() => {
-    setFittedFontMm(layout.textFontMm);
-    setLabelGeometry({ status: 'pending', fits: false });
-  }, [
+  const fittingKey = JSON.stringify([
+    printWidthMm,
+    printHeightMm,
     data.code,
     data.donorName,
     data.name,
     data.publicId,
     data.url,
-    layout.textFontMm,
-    printHeightMm,
-    printWidthMm,
   ]);
+  const fitCandidates = useMemo(
+    () => getFitCandidates(layout, printWidthMm, printHeightMm),
+    [layout, printHeightMm, printWidthMm],
+  );
+  const activeFittingState = fittingState?.key === fittingKey ? fittingState : null;
+  const activeCandidate = activeFittingState
+    ? fitCandidates[activeFittingState.candidateIndex]
+    : undefined;
+  const activeMeasurementLayout = activeCandidate && activeFittingState
+    ? layoutWithGeometry(activeCandidate.layout, activeCandidate.layout.qrMm, activeFittingState.probeMm)
+    : layout;
+  const effectiveLayout = fittedLayout ?? layout;
+
   useLayoutEffect(() => {
+    const availableSize = [...PRESET_LABEL_SIZES, ...customSizes].some((size) => size.id === sizeId);
+    if (sizeId !== 'manual' && !availableSize) {
+      setSizeId(defaultSizeId);
+    }
+  }, [customSizes, sizeId]);
+
+  useLayoutEffect(() => {
+    const firstCandidate = fitCandidates[0];
+    if (!firstCandidate) {
+      setFittingState(null);
+      setFittedLayout(null);
+      setLabelGeometry({ status: 'checked', fits: false, reason: layout.blockingReason });
+      return;
+    }
+    const highMm = firstCandidate.fontMm;
+    const lowMm = Math.max(0.65, layout.minimumTextFontMm);
+    setFittedLayout(null);
+    setLabelGeometry({ status: 'pending', fits: false });
+    setFittingState({
+      key: fittingKey,
+      candidateIndex: 0,
+      lowMm,
+      highMm,
+      probeMm: (lowMm + highMm) / 2,
+      results: [],
+    });
+  }, [fitCandidates, fittingKey, layout.blockingReason, layout.minimumTextFontMm]);
+
+  useLayoutEffect(() => {
+    if (!activeFittingState || !activeCandidate || activeFittingState.key !== fittingKey) return undefined;
     let cancelled = false;
     const measure = async () => {
       if (document.fonts?.ready) await document.fonts.ready;
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       if (cancelled || !measurementRef.current) return;
-      const result = measureLabelGeometry(measurementRef.current, printWidthMm, layout);
-      if (!result.fits && fittedFontMm > layout.minimumTextFontMm + 0.001) {
-        setLabelGeometry({ status: 'pending', fits: false });
-        setFittedFontMm((current) => Math.max(
-          layout.minimumTextFontMm,
-          Math.round((current - 0.05) * 100) / 100,
-        ));
+      const result = measureLabelGeometry(measurementRef.current, printWidthMm, activeMeasurementLayout);
+      if (cancelled) return;
+
+      const precisionMm = 0.08;
+      const isAtSearchBoundary = activeFittingState.highMm - activeFittingState.lowMm <= precisionMm;
+      if (!isAtSearchBoundary) {
+        const nextLowMm = result.fits
+          ? activeFittingState.probeMm
+          : activeFittingState.lowMm;
+        const nextHighMm = result.fits
+          ? activeFittingState.highMm
+          : activeFittingState.probeMm;
+        setFittingState((current) => {
+          if (!current || current.key !== fittingKey) return current;
+          return {
+            ...current,
+            lowMm: nextLowMm,
+            highMm: nextHighMm,
+            probeMm: (nextLowMm + nextHighMm) / 2,
+          };
+        });
         return;
       }
-      setLabelGeometry({ status: 'checked', ...result });
+
+      // Binary search assumes that its lower bound fits. Verify that
+      // assumption explicitly for long values on the smallest labels instead
+      // of accepting an infeasible candidate at the minimum font.
+      if (!result.fits && activeFittingState.lowMm <= layout.minimumTextFontMm + precisionMm
+        && activeFittingState.probeMm > layout.minimumTextFontMm + 0.001) {
+        setFittingState((current) => {
+          if (!current || current.key !== fittingKey) return current;
+          return {
+            ...current,
+            lowMm: layout.minimumTextFontMm,
+            highMm: current.probeMm,
+            probeMm: layout.minimumTextFontMm,
+          };
+        });
+        return;
+      }
+
+      const finalFontMm = result.fits
+        ? activeFittingState.probeMm
+        : activeFittingState.lowMm;
+      const finalFits = result.fits
+        || activeFittingState.lowMm > layout.minimumTextFontMm + precisionMm;
+      const finalLayout = layoutWithGeometry(activeCandidate.layout, activeCandidate.layout.qrMm, finalFontMm);
+      const candidateResult = finalFits
+        ? {
+            candidate: { layout: finalLayout, fontMm: finalFontMm },
+            // Favor a large QR, but give a long name enough horizontal room
+            // to keep all four fields comfortably legible.
+            score: finalLayout.qrMm * 0.55 + finalFontMm * 5,
+          }
+        : undefined;
+      const nextResults = candidateResult
+        ? [...activeFittingState.results, candidateResult]
+        : activeFittingState.results;
+      const nextIndex = activeFittingState.candidateIndex + 1;
+      const nextCandidate = fitCandidates[nextIndex];
+      if (nextCandidate) {
+        const nextLowMm = Math.max(0.65, layout.minimumTextFontMm);
+        setFittingState({
+          key: fittingKey,
+          candidateIndex: nextIndex,
+          lowMm: nextLowMm,
+          highMm: nextCandidate.fontMm,
+          probeMm: (nextLowMm + nextCandidate.fontMm) / 2,
+          results: nextResults,
+        });
+        return;
+      }
+
+      const best = nextResults.reduce<FitResult | undefined>(
+        (current, candidate) => !current || candidate.score > current.score ? candidate : current,
+        undefined,
+      );
+      if (best) {
+        setFittedLayout(best.candidate.layout);
+        setLabelGeometry({ status: 'checked', fits: true });
+      } else {
+        setFittedLayout(null);
+        setLabelGeometry({
+          status: 'checked',
+          fits: false,
+          reason: 'Tekstas arba QR kodas netelpa pasirinktoje etiketėje.',
+        });
+      }
+      setFittingState(null);
     };
     void measure();
     return () => {
       cancelled = true;
     };
   }, [
-    data.code,
-    data.donorName,
-    data.name,
-    data.publicId,
-    data.url,
-    fittedFontMm,
+    activeCandidate,
+    activeFittingState,
+    activeMeasurementLayout,
+    fittingKey,
+    fitCandidates,
     layout,
-    printHeightMm,
     printWidthMm,
   ]);
   const quantityNumber = Number(quantity);
@@ -224,14 +424,102 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
     && dimensionsValid
     && quantityValid
     && layout.canPrint
+    && fittedLayout !== null
+    && fittingState === null
     && labelGeometry.status === 'checked'
     && labelGeometry.fits
     && !isPrinting;
 
+  function sameDimensions(left: { widthMm: number; heightMm: number }, right: { widthMm: number; heightMm: number }) {
+    return left.widthMm === right.widthMm && left.heightMm === right.heightMm;
+  }
+
+  function persistManualSize(showNotice = true) {
+    if (manualSaveTimerRef.current !== undefined) {
+      window.clearTimeout(manualSaveTimerRef.current);
+      manualSaveTimerRef.current = undefined;
+    }
+    if (sizeId !== 'manual' || !dimensionsValid) return false;
+
+    const nextDimensions = { widthMm, heightMm };
+    const storedSizes = loadCustomLabelSizes();
+    const matchingPreset = PRESET_LABEL_SIZES.find((size) => sameDimensions(size, nextDimensions));
+    if (matchingPreset) {
+      const nextSizes = storedSizes.filter((size) => !sameDimensions(size, nextDimensions));
+      const collectionSaved = nextSizes.length === storedSizes.length || saveCustomLabelSizes(nextSizes);
+      const selectionSaved = saveSelectedLabelSize(matchingPreset.id);
+      if (!collectionSaved || !selectionSaved) {
+        setSizeError('Formato nepavyko išsaugoti naršyklės saugykloje.');
+        return false;
+      }
+      setCustomSizes(nextSizes);
+      setSizeError('');
+      if (showNotice) setSizeSaveNotice(`Formatas ${matchingPreset.widthMm} × ${matchingPreset.heightMm} mm išsaugotas.`);
+      manualDirtyRef.current = false;
+      return true;
+    }
+
+    const matchingCustom = storedSizes.find((size) => sameDimensions(size, nextDimensions));
+    const nextId = matchingCustom?.id
+      ?? `manual-${String(widthMm).replace('.', '_')}-${String(heightMm).replace('.', '_')}`;
+    const nextSize: CustomLabelSize = matchingCustom ?? {
+      id: nextId,
+      name: `Rankinis ${widthMm} × ${heightMm} mm`,
+      widthMm,
+      heightMm,
+    };
+    const withoutDuplicateDimensions = storedSizes.filter((size) => (
+      size.id === nextSize.id
+      || (!sameDimensions(size, nextDimensions) && !size.id.startsWith('manual-'))
+    ));
+    const nextSizes = withoutDuplicateDimensions.some((size) => size.id === nextSize.id)
+      ? withoutDuplicateDimensions.map((size) => size.id === nextSize.id ? nextSize : size)
+      : [...withoutDuplicateDimensions, nextSize];
+    const collectionSaved = saveCustomLabelSizes(nextSizes);
+    const selectionSaved = saveSelectedLabelSize(nextId);
+    if (!collectionSaved || !selectionSaved) {
+      setSizeError('Formatas nepavyko išsaugoti naršyklės saugykloje.');
+      return false;
+    }
+    setCustomSizes(nextSizes);
+    setSizeError('');
+    if (showNotice) setSizeSaveNotice(`Formatas ${widthMm} × ${heightMm} mm išsaugotas.`);
+    manualDirtyRef.current = false;
+    return true;
+  }
+
+  function scheduleManualSizeSave() {
+    if (!manualDirtyRef.current || manualFocusCountRef.current > 0) return;
+    if (manualSaveTimerRef.current !== undefined) window.clearTimeout(manualSaveTimerRef.current);
+    manualSaveTimerRef.current = window.setTimeout(() => {
+      manualSaveTimerRef.current = undefined;
+      if (manualFocusCountRef.current > 0) return;
+      persistManualSize();
+    }, 500);
+  }
+
+  function handleManualFocus() {
+    manualFocusCountRef.current += 1;
+  }
+
+  function handleManualBlur() {
+    manualFocusCountRef.current = Math.max(0, manualFocusCountRef.current - 1);
+    scheduleManualSizeSave();
+  }
+
   function selectSize(nextId: string) {
+    if (manualSaveTimerRef.current !== undefined) {
+      window.clearTimeout(manualSaveTimerRef.current);
+      manualSaveTimerRef.current = undefined;
+    }
+    if (nextId !== 'manual') manualDirtyRef.current = false;
     setSizeId(nextId);
     setSizeError('');
     setPrintError('');
+    setSizeSaveNotice('');
+    if (!saveSelectedLabelSize(nextId)) {
+      setSizeError('Formato nepavyko išsaugoti naršyklės saugykloje.');
+    }
     if (nextId === 'manual') return;
     const nextSize = [...PRESET_LABEL_SIZES, ...customSizes].find((size) => size.id === nextId);
     if (nextSize) {
@@ -257,12 +545,21 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
       return;
     }
     const name = profileEditor.name.trim();
+    const storedProfiles = loadPrinterProfiles();
+    let nextProfiles: PrinterProfile[];
     if (profileEditor.id) {
-      setProfiles((current) => current.map((profile) => profile.id === profileEditor.id ? { ...profile, name } : profile));
+      nextProfiles = storedProfiles.map((profile) => profile.id === profileEditor.id ? { ...profile, name } : profile);
     } else {
       const profile = { id: createLocalId('printer'), name };
-      setProfiles((current) => [...current, profile]);
-      setSelectedProfileId(profile.id);
+      nextProfiles = [...storedProfiles, profile];
+    }
+    if (!savePrinterProfiles(nextProfiles)) {
+      setProfileError('Profilio nepavyko išsaugoti naršyklės saugykloje.');
+      return;
+    }
+    setProfiles(nextProfiles);
+    if (!profileEditor.id) {
+      setSelectedProfileId(nextProfiles[nextProfiles.length - 1].id);
     }
     setProfileEditor(null);
     setProfileError('');
@@ -270,11 +567,16 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
 
   function deleteProfile() {
     if (!selectedProfile) return;
-    if (profiles.length <= 1) {
+    const storedProfiles = loadPrinterProfiles();
+    if (storedProfiles.length <= 1) {
       setProfileError('Palikite bent vieną profilio pavadinimą spausdinimo nustatymams.');
       return;
     }
-    const remaining = profiles.filter((profile) => profile.id !== selectedProfile.id);
+    const remaining = storedProfiles.filter((profile) => profile.id !== selectedProfile.id);
+    if (!savePrinterProfiles(remaining)) {
+      setProfileError('Profilio nepavyko išsaugoti naršyklės saugykloje.');
+      return;
+    }
     setProfiles(remaining);
     setSelectedProfileId(remaining[0].id);
     setProfileError('');
@@ -314,17 +616,28 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
       setSizeError(result.error);
       return;
     }
+    if (PRESET_LABEL_SIZES.some((size) => size.widthMm === result.width && size.heightMm === result.height)) {
+      setSizeError('Toks formatas jau yra numatytųjų dydžių sąraše.');
+      return;
+    }
     const nextSize = {
       id: sizeEditor.id ?? createLocalId('label-size'),
       name: sizeEditor.name.trim(),
       widthMm: result.width,
       heightMm: result.height,
     };
-    if (sizeEditor.id) {
-      setCustomSizes((current) => current.map((size) => size.id === sizeEditor.id ? nextSize : size));
-    } else {
-      setCustomSizes((current) => [...current, nextSize]);
+    const storedSizes = loadCustomLabelSizes();
+    const withoutDuplicateDimensions = storedSizes.filter((size) => (
+      size.id === nextSize.id || !sameDimensions(size, nextSize)
+    ));
+    const nextSizes = sizeEditor.id
+      ? withoutDuplicateDimensions.map((size) => size.id === sizeEditor.id ? nextSize : size)
+      : [...withoutDuplicateDimensions, nextSize];
+    if (!saveCustomLabelSizes(nextSizes)) {
+      setSizeError('Dydžio nepavyko išsaugoti naršyklės saugykloje.');
+      return;
     }
+    setCustomSizes(nextSizes);
     setSizeId(nextSize.id);
     setManualWidth(String(nextSize.widthMm));
     setManualHeight(String(nextSize.heightMm));
@@ -333,15 +646,24 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
   }
 
   function deleteSize() {
-    const size = customSizes.find((item) => item.id === sizeId);
+    const storedSizes = loadCustomLabelSizes();
+    const size = storedSizes.find((item) => item.id === sizeId);
     if (!size) return;
-    setCustomSizes((current) => current.filter((item) => item.id !== size.id));
+    const nextSizes = storedSizes.filter((item) => item.id !== size.id);
+    const collectionSaved = saveCustomLabelSizes(nextSizes);
+    const selectionSaved = saveSelectedLabelSize(defaultSizeId);
+    if (!collectionSaved || !selectionSaved) {
+      setSizeError('Dydžio nepavyko išsaugoti naršyklės saugykloje.');
+      return;
+    }
+    setCustomSizes(nextSizes);
     setSizeId(defaultSizeId);
     setSizeError('');
   }
 
   async function printLabels() {
     setPrintError('');
+    if (sizeId === 'manual') persistManualSize(false);
     if (!dimensionsValid) {
       setPrintError('Plotis ir aukštis turi būti nuo 10 iki 150 mm.');
       return;
@@ -369,7 +691,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
         widthMm: printWidthMm,
         heightMm: printHeightMm,
         quantity: quantityNumber,
-        fontSizeMm: fittedFontMm,
+         layout: fittedLayout ?? layout,
       });
     } catch (error) {
       setPrintError(error instanceof Error ? error.message : 'Spausdinimo lango atidaryti nepavyko.');
@@ -452,15 +774,52 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <div>
                     <label htmlFor="manual-label-width" className="text-xs font-semibold">Plotis (mm)</label>
-                    <input id="manual-label-width" type="number" min={10} max={150} step="0.1" value={manualWidth} onChange={(event) => setManualWidth(event.target.value)} className={fieldClass(!isValidLabelDimension(widthMm))} aria-invalid={!isValidLabelDimension(widthMm)} data-testid="input-label-width" />
+                   <input
+                     id="manual-label-width"
+                     type="number"
+                     min={10}
+                     max={150}
+                     step="0.1"
+                     value={manualWidth}
+                     onFocus={handleManualFocus}
+                     onBlur={handleManualBlur}
+                     onChange={(event) => { manualDirtyRef.current = true; setSizeSaveNotice(''); setManualWidth(event.target.value); }}
+                     className={fieldClass(!isValidLabelDimension(widthMm))}
+                     aria-invalid={!isValidLabelDimension(widthMm)}
+                     data-testid="input-label-width"
+                   />
                   </div>
                   <div>
                     <label htmlFor="manual-label-height" className="text-xs font-semibold">Aukštis (mm)</label>
-                    <input id="manual-label-height" type="number" min={10} max={150} step="0.1" value={manualHeight} onChange={(event) => setManualHeight(event.target.value)} className={fieldClass(!isValidLabelDimension(heightMm))} aria-invalid={!isValidLabelDimension(heightMm)} data-testid="input-label-height" />
+                   <input
+                     id="manual-label-height"
+                     type="number"
+                     min={10}
+                     max={150}
+                     step="0.1"
+                     value={manualHeight}
+                     onFocus={handleManualFocus}
+                     onBlur={handleManualBlur}
+                     onChange={(event) => { manualDirtyRef.current = true; setSizeSaveNotice(''); setManualHeight(event.target.value); }}
+                     className={fieldClass(!isValidLabelDimension(heightMm))}
+                     aria-invalid={!isValidLabelDimension(heightMm)}
+                     data-testid="input-label-height"
+                   />
                   </div>
                 </div>
               )}
-              {sizeId === 'manual' && !dimensionsValid && <p className="mt-2 text-xs text-destructive" role="alert">Įveskite plotį ir aukštį nuo 10 iki 150 mm.</p>}
+               {sizeId === 'manual' && !dimensionsValid && <p className="mt-2 text-xs text-destructive" role="alert">Įveskite plotį ir aukštį nuo 10 iki 150 mm.</p>}
+               {sizeId === 'manual' && dimensionsValid && (
+                 <button
+                   type="button"
+                   onClick={() => { persistManualSize(); }}
+                   className="mt-3 inline-flex min-h-8 items-center rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground"
+                   data-testid="button-save-manual-label-size"
+                 >
+                   Išsaugoti formatą
+                 </button>
+               )}
+               {sizeSaveNotice && <p className="mt-2 text-xs font-semibold text-secondary" role="status" data-testid="status-label-size-saved">{sizeSaveNotice}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button type="button" onClick={beginAddSize} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-add-label-size"><Plus size={14} /> Išsaugoti dydį</button>
                 <button type="button" onClick={beginEditSize} disabled={!customSizes.some((size) => size.id === sizeId)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-border px-2.5 text-xs font-semibold hover:bg-muted disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-edit-label-size"><Pencil size={13} /> Redaguoti</button>
@@ -508,7 +867,12 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
                 <span className="rounded-full border border-border bg-background px-2 py-1 font-mono-ui text-[10px] font-bold text-muted-foreground">1:1 maketas</span>
               </div>
               <div className="rounded-lg border border-border bg-white p-3 shadow-inner" data-testid="label-preview">
-                <ScaledLabelPreview {...data} widthMm={printWidthMm} heightMm={printHeightMm} fontSizeMm={fittedFontMm} />
+                 <ScaledLabelPreview
+                   {...data}
+                   widthMm={printWidthMm}
+                   heightMm={printHeightMm}
+                   layoutOverride={effectiveLayout}
+                 />
               </div>
               <p className="mt-3 text-xs leading-5 text-muted-foreground">Peržiūroje naudojamas tas pats SVG QR, milimetrinis DOM maketas ir pritaikytas šriftas, kuris bus siunčiamas spausdinti.</p>
             </section>
@@ -557,7 +921,7 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
             {...data}
             widthMm={printWidthMm}
             heightMm={printHeightMm}
-            fontSizeMm={fittedFontMm}
+            layoutOverride={activeMeasurementLayout}
           />
         </div>
       </DialogContent>

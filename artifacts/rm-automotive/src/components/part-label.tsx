@@ -33,20 +33,6 @@ export function isValidLabelDimension(value: number) {
   return Number.isFinite(value) && value >= MIN_DIMENSION_MM && value <= MAX_DIMENSION_MM;
 }
 
-function estimateLineCount(value: string, availableWidthMm: number, fontMm: number) {
-  const charactersPerLine = Math.max(1, Math.floor(availableWidthMm / (fontMm * 0.6)));
-  return Math.max(1, Math.ceil(Math.max(1, value.length) / charactersPerLine));
-}
-
-function labelValues(data: PartLabelData) {
-  return [
-    data.name,
-    `Donoras · ${data.donorName}`,
-    `OEM · ${data.code || 'Nenurodytas'}`,
-    `QR ID · ${data.publicId}`,
-  ];
-}
-
 /**
  * The same deterministic layout calculation is used by the preview and by the
  * static print document. A real DOM measurement adds the final fit check
@@ -60,47 +46,36 @@ export function getLabelLayout(
   const width = isValidLabelDimension(widthMm) ? widthMm : 60;
   const height = isValidLabelDimension(heightMm) ? heightMm : 40;
   const small = width <= 30 && height <= 20;
-  const paddingMm = small ? 1.25 : width <= 40 ? 1.6 : 2;
-  const gapMm = small ? 1 : 1.5;
-  const borderMm = 0.25;
-  const innerWidthMm = Math.max(0, width - paddingMm * 2 - borderMm * 2);
-  const innerHeightMm = Math.max(0, height - paddingMm * 2 - borderMm * 2);
+  // Keep the paper edge ink-free. Padding is deliberately small so that the
+  // fitting pass can use the whole selected label instead of leaving a fixed
+  // 2 mm band around every size.
+  const paddingMm = small ? 1 : width <= 40 ? 1.25 : 1.5;
+  const gapMm = small ? 0.8 : 1;
+  const innerWidthMm = Math.max(0, width - paddingMm * 2);
+  const innerHeightMm = Math.max(0, height - paddingMm * 2);
   // A label is intentionally never rotated. A strict width > height check
   // makes square labels deterministic as well: they use the vertical stack.
   const orientation: LabelOrientation = width > height ? 'horizontal' : 'vertical';
   const qrMm = orientation === 'horizontal'
-    ? Math.min(innerHeightMm, innerWidthMm * (small ? 0.38 : 0.41))
-    : Math.min(innerWidthMm * 0.52, Math.max(0, (innerHeightMm - gapMm) * 0.6));
+    ? Math.min(innerHeightMm, Math.max(0, innerWidthMm - gapMm - 10))
+    : Math.min(innerWidthMm, Math.max(0, innerHeightMm - gapMm - 5));
   const textWidthMm = orientation === 'horizontal'
     ? Math.max(0, innerWidthMm - qrMm - gapMm)
     : innerWidthMm;
   const textHeightMm = orientation === 'horizontal'
     ? innerHeightMm
     : Math.max(0, innerHeightMm - qrMm - gapMm);
-  const values = labelValues(data);
-  const minimumFontMm = small ? 1.05 : 1.25;
-  const initialFontMm = small ? 1.55 : width <= 40 ? 1.85 : 2.15;
+  const minimumFontMm = small ? 1.05 : 1.15;
+  // This is only the first paint fallback. LabelPrintSetup replaces it with a
+  // measured maximum, so it must not act as a typography cap for large paper.
+  const initialFontMm = Math.max(
+    minimumFontMm,
+    Math.min(
+      height / 8.8,
+      textWidthMm / 8,
+    ),
+  );
   const lineHeight = 1.2;
-
-  function contentHeightAt(fontMm: number) {
-    return values.reduce((total, value, index) => {
-      const valueFontMm = index === 0 ? fontMm * 1.08 : fontMm;
-      return total + estimateLineCount(value, textWidthMm, valueFontMm) * valueFontMm * lineHeight;
-    }, 0);
-  }
-
-  let textFontMm = initialFontMm;
-  let contentHeightMm = contentHeightAt(textFontMm);
-
-  while (contentHeightMm > textHeightMm && textFontMm > minimumFontMm) {
-    textFontMm = Math.round((textFontMm - 0.05) * 100) / 100;
-    contentHeightMm = contentHeightAt(textFontMm);
-  }
-  textFontMm = Math.max(textFontMm, minimumFontMm);
-  // Only four single-line fields are considered for this early structural
-  // guard. Longer values are deliberately left to the measured DOM fitting
-  // pipeline, which can decide whether the actual glyphs fit at minimum size.
-  const absoluteMinimumContentHeightMm = minimumFontMm * lineHeight * (1.08 + 3);
 
   const warnings: string[] = [];
   if (qrMm < 11) {
@@ -122,8 +97,6 @@ export function getLabelLayout(
     blockingReason = 'Pasirinktas dydis nepalieka minimalaus 8 mm QR laukelio.';
   } else if (textWidthMm < 3 || textHeightMm < 1) {
     blockingReason = 'Pasirinktas dydis nepalieka minimalaus teksto laukelio.';
-  } else if (absoluteMinimumContentHeightMm > textHeightMm + 0.1) {
-    blockingReason = 'Keturi etiketės laukai netelpa pasirinktame dydyje.';
   }
 
   return {
@@ -133,7 +106,7 @@ export function getLabelLayout(
     qrMm,
     textWidthMm,
     textHeightMm,
-    textFontMm,
+    textFontMm: initialFontMm,
     minimumTextFontMm: minimumFontMm,
     lineHeight,
     canPrint: !blockingReason,
@@ -150,6 +123,7 @@ export type PartLabelProps = PartLabelData & {
   widthMm: number;
   heightMm: number;
   fontSizeMm?: number;
+  layoutOverride?: LabelLayout;
 };
 
 export const PartLabel = forwardRef<HTMLDivElement, PartLabelProps>(function PartLabel({
@@ -161,9 +135,10 @@ export const PartLabel = forwardRef<HTMLDivElement, PartLabelProps>(function Par
   donorName,
   code,
   url,
+  layoutOverride,
 }, ref) {
   const data = { publicId, name, donorName, code, url };
-  const layout = getLabelLayout(widthMm, heightMm, data);
+  const layout = layoutOverride ?? getLabelLayout(widthMm, heightMm, data);
   const labelWidth = isValidLabelDimension(widthMm) ? widthMm : 60;
   const labelHeight = isValidLabelDimension(heightMm) ? heightMm : 40;
   const textFontMm = fontSizeMm ?? layout.textFontMm;
@@ -180,7 +155,7 @@ export const PartLabel = forwardRef<HTMLDivElement, PartLabelProps>(function Par
     padding: `${layout.paddingMm}mm`,
     backgroundColor: '#ffffff',
     color: '#000000',
-    border: '0.25mm solid #000000',
+    border: '0',
     fontFamily: 'Arial, Helvetica, sans-serif',
     flexShrink: 0,
   };
@@ -212,6 +187,8 @@ export const PartLabel = forwardRef<HTMLDivElement, PartLabelProps>(function Par
       data-label-width={labelWidth}
       data-label-height={labelHeight}
       data-label-orientation={layout.orientation}
+      data-label-qr-mm={layout.qrMm}
+      data-label-font-mm={textFontMm}
     >
       <div
         data-label-qr="true"

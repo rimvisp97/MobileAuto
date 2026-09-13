@@ -24,6 +24,7 @@ export const DEFAULT_PRINTER_PROFILE: PrinterProfile = {
 
 const PRINTER_PROFILES_KEY = 'rm-automotive-label-printer-profiles-v1';
 const CUSTOM_LABEL_SIZES_KEY = 'rm-automotive-label-custom-sizes-v1';
+const LAST_LABEL_SIZE_KEY = 'rm-automotive-label-last-size-v1';
 
 function canUseStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -60,6 +61,20 @@ function isValidCustomSize(value: unknown): value is CustomLabelSize {
     && isValidDimension((value as CustomLabelSize).heightMm);
 }
 
+function dimensionsKey(widthMm: number, heightMm: number) {
+  return `${widthMm}:${heightMm}`;
+}
+
+function uniqueCustomSizes(sizes: CustomLabelSize[]) {
+  const seen = new Set<string>();
+  return sizes.filter((size) => {
+    const key = dimensionsKey(size.widthMm, size.heightMm);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function loadPrinterProfiles(): PrinterProfile[] {
   if (!canUseStorage()) return [DEFAULT_PRINTER_PROFILE];
   try {
@@ -76,11 +91,12 @@ export function loadPrinterProfiles(): PrinterProfile[] {
 }
 
 export function savePrinterProfiles(profiles: PrinterProfile[]) {
-  if (!canUseStorage()) return;
+  if (!canUseStorage()) return false;
   try {
     window.localStorage.setItem(PRINTER_PROFILES_KEY, JSON.stringify(profiles));
+    return true;
   } catch {
-    // A private browsing session or a full storage quota must not break printing.
+    return false;
   }
 }
 
@@ -89,23 +105,50 @@ export function loadCustomLabelSizes(): CustomLabelSize[] {
   try {
     const parsed = readJson(window.localStorage.getItem(CUSTOM_LABEL_SIZES_KEY));
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isValidCustomSize).map((size) => ({
+    const sizes = parsed.filter(isValidCustomSize).map((size) => ({
       id: size.id,
       name: size.name.trim(),
       widthMm: size.widthMm,
       heightMm: size.heightMm,
     }));
+    return uniqueCustomSizes(sizes);
   } catch {
     return [];
   }
 }
 
 export function saveCustomLabelSizes(sizes: CustomLabelSize[]) {
-  if (!canUseStorage()) return;
+  if (!canUseStorage()) return false;
   try {
-    window.localStorage.setItem(CUSTOM_LABEL_SIZES_KEY, JSON.stringify(sizes));
+    window.localStorage.setItem(CUSTOM_LABEL_SIZES_KEY, JSON.stringify(uniqueCustomSizes(sizes)));
+    return true;
   } catch {
-    // A private browsing session or a full storage quota must not break printing.
+    return false;
+  }
+}
+
+/**
+ * The last selected format is separate from the size collection so that a
+ * manually entered size can remain selected while its fields are being
+ * edited. The corresponding custom size is written before this id is saved.
+ */
+export function loadSelectedLabelSize() {
+  if (!canUseStorage()) return undefined;
+  try {
+    const value = window.localStorage.getItem(LAST_LABEL_SIZE_KEY);
+    return value && value.trim().length > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveSelectedLabelSize(sizeId: string) {
+  if (!canUseStorage()) return false;
+  try {
+    window.localStorage.setItem(LAST_LABEL_SIZE_KEY, sizeId);
+    return true;
+  } catch {
+    return false;
   }
 }
 

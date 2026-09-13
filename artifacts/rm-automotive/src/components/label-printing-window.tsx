@@ -1,12 +1,14 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import React from 'react';
-import { PartLabel, type PartLabelData } from '@/components/part-label';
+import { PartLabel, type LabelLayout, type PartLabelData } from '@/components/part-label';
 
 export type LabelPrintWindowOptions = PartLabelData & {
   widthMm: number;
   heightMm: number;
   quantity: number;
-  fontSizeMm: number;
+  layout?: LabelLayout;
+  /** Kept for callers from before the measured geometry was introduced. */
+  fontSizeMm?: number;
 };
 
 const PRINT_WINDOW_STYLES = `
@@ -88,6 +90,7 @@ export async function openLabelPrintWindow(options: LabelPrintWindowOptions) {
       widthMm={options.widthMm}
       heightMm={options.heightMm}
       fontSizeMm={options.fontSizeMm}
+      layoutOverride={options.layout}
     />,
   )).join('');
   const styles = replacePrintTokens(PRINT_WINDOW_STYLES, options.widthMm, options.heightMm);
