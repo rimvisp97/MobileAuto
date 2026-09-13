@@ -26,3 +26,9 @@ Shared label-setting keys may contain slash-separated namespaces, so the API rou
 **Why:** Printer profiles and custom sizes use namespaced keys; a single-segment Express parameter returned `404` during manual-size saves and looked like a repeated UI refresh.
 
 **How to apply:** Use a catch-all settings route and normalize the wildcard parameter before validation, while keeping the stored key unchanged.
+
+Print popups created with `document.write()` must not wait indefinitely for a `load` event before calling `print()`.
+
+**Why:** iOS/browser popup documents can remain without the expected load event even though their HTML is ready, leaving the user with an open window but no print dialog.
+
+**How to apply:** Bound document, font, image, and animation waits with short timeouts, then call the browser print dialog.
