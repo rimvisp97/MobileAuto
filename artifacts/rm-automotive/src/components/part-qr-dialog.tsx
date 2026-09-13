@@ -1,6 +1,7 @@
 import { QRCodeSVG } from 'qrcode.react';
-import { QrCode } from 'lucide-react';
+import { Printer, QrCode } from 'lucide-react';
 import { Link } from 'wouter';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { LabelPrintSetup } from '@/components/label-printing';
 
 type PartQrDialogProps = {
   publicId: string;
@@ -19,8 +21,12 @@ type PartQrDialogProps = {
 };
 
 export function PartQrDialog({ publicId, name, donorName, code, url }: PartQrDialogProps) {
+  const [printSetupOpen, setPrintSetupOpen] = useState(false);
+  const labelData = { publicId, name, donorName, code, url };
+
   return (
-    <Dialog>
+    <>
+      <Dialog>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -62,6 +68,16 @@ export function PartQrDialog({ publicId, name, donorName, code, url }: PartQrDia
               QR ID · {publicId}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setPrintSetupOpen(true)}
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground shadow-sm transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            aria-haspopup="dialog"
+            data-testid={`button-print-label-${publicId}`}
+          >
+            <Printer size={16} aria-hidden="true" />
+            Spausdinti lipduką
+          </button>
           <Link
             href={`/detale/${publicId}`}
             className="inline-flex min-h-9 items-center justify-center rounded-lg border border-border px-3 py-2 text-xs font-bold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
@@ -70,6 +86,8 @@ export function PartQrDialog({ publicId, name, donorName, code, url }: PartQrDia
           </Link>
         </div>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <LabelPrintSetup open={printSetupOpen} onOpenChange={setPrintSetupOpen} data={labelData} />
+    </>
   );
 }
