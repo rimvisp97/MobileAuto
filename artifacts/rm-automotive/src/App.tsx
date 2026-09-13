@@ -1,10 +1,12 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createPart, deletePart as deletePartApi, getPublicPart, importParts, listParts, updatePart as updatePartApi } from '@workspace/api-client-react';
+import { createPart, deletePart as deletePartApi, importParts, listParts, updatePart as updatePartApi } from '@workspace/api-client-react';
 import type { Part as ApiPart } from '@workspace/api-client-react';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { PartQrDialog } from '@/components/part-qr-dialog';
+import { PartStatusToggle } from '@/components/part-status-confirm-dialog';
+import { PublicPartPage } from '@/pages/public-part-page';
 import {
   Activity,
   ArrowDownLeft,
@@ -28,7 +30,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 
 type Expense = { id: string; label: string; amount: number; date: string; category?: string };
 type Vehicle = {
@@ -399,13 +401,15 @@ function AppShell() {
 
   async function togglePart(carId: string, partId: string) {
     const part = partsCars.find((car) => car.id === carId)?.parts.find((item) => item.id === partId);
-    if (!part?.dbId) return;
+    if (!part?.dbId) return false;
     try {
       const updated = await updatePartApi(part.dbId, { status: part.status === 'inventory' ? 'sold' : 'inventory' });
       setPartsCars((current) => current.map((car) => car.id === carId ? { ...car, parts: car.parts.map((item) => item.id === partId ? apiPartToPart(updated) : item) } : car));
       flash('Detalės būsena atnaujinta');
-    } catch (error) {
-      flash(error instanceof Error ? error.message : 'Būsenos pakeisti nepavyko.');
+      return true;
+    } catch {
+      flash('Būsenos pakeisti nepavyko.');
+      return false;
     }
   }
 
@@ -730,14 +734,11 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
                         </>
                       )}
                       {can('sellParts') && (
-                        <button
-                          onClick={() => togglePart(car.id, part.id)}
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`}
-                          data-testid={`button-toggle-part-${part.id}`}
-                        >
-                          {part.status === 'sold' ? <Check size={12} /> : <Package size={12} />}
-                          {part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}
-                        </button>
+                        <PartStatusToggle
+                          part={part}
+                          onConfirm={() => togglePart(car.id, part.id)}
+                          testId={`button-toggle-part-${part.id}`}
+                        />
                       )}
                     </div>
                   </td>
@@ -823,57 +824,6 @@ function PartModal({ car, part, close, save, update }: { car?: PartsCar; part?: 
   const [form, setForm] = useState({ name: part?.name ?? '', code: part?.code ?? '', price: String(part?.price ?? ''), location: part?.location ?? '' });
   function submit(event: FormEvent) { event.preventDefault(); if (!car) return; const payload = { name: form.name, code: form.code, price: Number(form.price), location: form.location || undefined }; if (part) update(car.id, part.id, payload); else save(car.id, payload); }
   return <Modal title={part ? 'Redaguoti detalę' : 'Pridėti detalę'} eyebrow={`${car?.make ?? ''} ${car?.model ?? ''}`} close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:p-6"><Field label="Detalės pavadinimas"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="pvz. Generatorius" data-testid="input-part-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="OEM kodas"><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={inputClass} placeholder="nebūtina" data-testid="input-part-code" /></Field><Field label="Kaina, EUR"><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} placeholder="0,00" data-testid="input-part-price" /></Field></div><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Lentyna B3 / dėžė 12" data-testid="input-part-location" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-part">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-part">{part ? 'Išsaugoti pakeitimus' : 'Pridėti detalę'}</button></div></form></Modal>;
-}
-
-function PublicPartPage() {
-  const { publicId } = useParams<{ publicId: string }>();
-  const [part, setPart] = useState<ApiPart>();
-  const [state, setState] = useState<'loading' | 'ready' | 'not-found' | 'error'>('loading');
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadPart() {
-      try {
-        const current = await getPublicPart(publicId);
-        if (!cancelled) {
-          setPart(current);
-          setState('ready');
-        }
-      } catch (error) {
-        if (cancelled) return;
-        const status = typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0;
-        setState(status === 404 ? 'not-found' : 'error');
-      }
-    }
-    void loadPart();
-    return () => {
-      cancelled = true;
-    };
-  }, [publicId]);
-
-  return <main className="noise min-h-[100dvh] bg-background px-5 py-10 text-foreground">
-    <div className="mx-auto max-w-2xl">
-      <Link href="/" className="mb-8 inline-flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-mono-ui text-sm font-bold text-primary-foreground">RM</span>
-        <span><span className="block text-sm font-bold">RM Automotive</span><span className="font-mono-ui text-[9px] uppercase tracking-[0.18em] text-muted-foreground">Detalės kortelė</span></span>
-      </Link>
-      {state === 'loading' && <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground shadow-sm"><span className="mx-auto mb-4 block h-3 w-3 animate-pulse rounded-full bg-primary" />Kraunami naujausi detalės duomenys...</div>}
-      {state === 'not-found' && <EmptyState title="Detalė nerasta" body="Šis QR identifikatorius negalioja arba detalė buvo pašalinta." />}
-      {state === 'error' && <EmptyState title="Duomenų įkelti nepavyko" body="Patikrink interneto ryšį ir pabandyk dar kartą." />}
-      {state === 'ready' && part && <article className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl">
-         <div className="border-b border-border p-6">
-          <div><div className={`mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}</div><h1 className="text-2xl font-bold sm:text-3xl">{part.name}</h1><p className="mt-2 text-sm text-muted-foreground">{part.donorLabel}</p></div>
-        </div>
-        <dl className="grid sm:grid-cols-2">
-          <div className="border-b border-border p-5 sm:border-r"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">OEM kodas</dt><dd className="mt-2 font-mono-ui text-sm font-bold">{part.code || 'Nenurodytas'}</dd></div>
-          <div className="border-b border-border p-5"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Kaina</dt><dd className="mt-2 font-mono-ui text-lg font-bold">{money(part.price)}</dd></div>
-          <div className="border-b border-border p-5 sm:border-b-0 sm:border-r"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Laikymo vieta</dt><dd className="mt-2 text-sm font-semibold">{part.location || 'Nenurodyta'}</dd></div>
-          <div className="p-5"><dt className="font-mono-ui text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Atnaujinta</dt><dd className="mt-2 text-sm font-semibold">{shortDate(part.updatedAt)}</dd></div>
-        </dl>
-        <div className="border-t border-border bg-muted/35 px-5 py-4"><p className="break-all font-mono-ui text-[9px] uppercase tracking-wide text-muted-foreground">QR ID · {part.publicId}</p></div>
-      </article>}
-    </div>
-  </main>;
 }
 
 function Router() {
