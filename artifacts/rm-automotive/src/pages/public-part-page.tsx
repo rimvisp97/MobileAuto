@@ -3,8 +3,9 @@ import { getPublicPart, updatePart } from '@workspace/api-client-react';
 import type { Part as ApiPart } from '@workspace/api-client-react';
 import { Link, useParams } from 'wouter';
 import { PartEditDialog } from '@/components/part-edit-dialog';
+import { LabelPrintSetup } from '@/components/label-printing';
 import { PartStatusControls, type PartStatus } from '@/components/part-status-confirm-dialog';
-import { ClipboardList, Pencil } from 'lucide-react';
+import { ClipboardList, Pencil, Printer } from 'lucide-react';
 
 function money(value: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 2 }).format(value);
@@ -29,6 +30,7 @@ export function PublicPartPage() {
   const [part, setPart] = useState<ApiPart>();
   const [state, setState] = useState<'loading' | 'ready' | 'not-found' | 'error'>('loading');
   const [editOpen, setEditOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [actionError, setActionError] = useState<string>();
   const latestRequest = useRef(0);
@@ -107,7 +109,10 @@ export function PublicPartPage() {
                     <h1 className="text-2xl font-bold sm:text-3xl">{part.name}</h1>
                     <p className="mt-2 text-sm text-muted-foreground">{part.donorLabel}</p>
                   </div>
-                  <button type="button" onClick={() => setEditOpen(true)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground" data-testid="button-edit-public-part"><Pencil size={14} /> Redaguoti</button>
+                  <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col">
+                    <button type="button" onClick={() => setEditOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground" data-testid="button-edit-public-part"><Pencil size={14} /> Redaguoti</button>
+                    <button type="button" onClick={() => setPrintOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" data-testid="button-print-public-part"><Printer size={14} /> Spausdinti lipduką</button>
+                  </div>
                 </div>
               </div>
               <dl className="grid sm:grid-cols-2">
@@ -124,6 +129,13 @@ export function PublicPartPage() {
               <div className="border-t border-border px-5 py-4"><p className="break-all font-mono-ui text-[9px] uppercase tracking-wide text-muted-foreground">QR ID · {part.publicId}</p></div>
             </article>
             <PartEditDialog part={part} open={editOpen} onOpenChange={setEditOpen} onSaved={handleSaved} />
+            {printOpen && <LabelPrintSetup open={printOpen} onOpenChange={setPrintOpen} data={{
+              publicId: part.publicId,
+              name: part.name,
+              donorName: part.donorLabel,
+              code: part.code,
+              url: `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/detale/${part.publicId}`,
+            }} />}
           </>
         )}
       </div>
