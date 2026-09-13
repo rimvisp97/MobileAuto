@@ -1,27 +1,19 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/react/internal';
-import { shadcn } from '@clerk/themes';
-import { createPart, deletePart as deletePartApi, getAccessMe, getPublicPart, importParts, inviteAccessUser, listAccessUsers, listParts, updateAccessUser, updatePart as updatePartApi } from '@workspace/api-client-react';
-import type { AccessUser, Part as ApiPart } from '@workspace/api-client-react';
+import { createPart, deletePart as deletePartApi, getPublicPart, importParts, listParts, updatePart as updatePartApi } from '@workspace/api-client-react';
+import type { Part as ApiPart } from '@workspace/api-client-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   Activity,
-  Ban,
   ArrowDownLeft,
-  ArrowUpRight,
   BadgeEuro,
   Bell,
   CarFront,
   Check,
   ChevronDown,
   CircleDollarSign,
-  CirclePlus,
-  CircleAlert,
   ClipboardList,
   Gauge,
   LayoutDashboard,
@@ -31,14 +23,9 @@ import {
   Plus,
   QrCode,
   Search,
-  RefreshCw,
-  Save,
-  ShieldCheck,
   Settings2,
-  ShoppingCart,
   Trash2,
   TrendingUp,
-  UserPlus,
   Wrench,
   X,
 } from 'lucide-react';
@@ -95,36 +82,11 @@ type PartsCar = {
   createdAt: string;
 };
 
-type PermissionKey = keyof AccessUser['permissions'];
-const permissionDefinitions: Array<{ key: PermissionKey; label: string; group: string }> = [
-  { key: 'viewDashboard', label: 'Pagrindinio ekrano peržiūra', group: 'Bendra' },
-  { key: 'viewFinancials', label: 'Finansinių duomenų peržiūra', group: 'Bendra' },
-  { key: 'viewVehicles', label: 'Automobilių peržiūra', group: 'Automobiliai' },
-  { key: 'createVehicles', label: 'Automobilių kūrimas', group: 'Automobiliai' },
-  { key: 'editVehicles', label: 'Automobilių redagavimas', group: 'Automobiliai' },
-  { key: 'deleteVehicles', label: 'Automobilių trynimas', group: 'Automobiliai' },
-  { key: 'addExpenses', label: 'Išlaidų pridėjimas', group: 'Automobiliai' },
-  { key: 'sellVehicles', label: 'Automobilių pardavimas', group: 'Automobiliai' },
-  { key: 'viewParts', label: 'Dalių peržiūra', group: 'Dalys' },
-  { key: 'manageDonors', label: 'Donorų valdymas', group: 'Dalys' },
-  { key: 'manageParts', label: 'Detalių valdymas', group: 'Dalys' },
-  { key: 'sellParts', label: 'Detalių pardavimas', group: 'Dalys' },
-  { key: 'manageSettings', label: 'Naudotojų ir teisių valdymas', group: 'Sistema' },
-];
-
 const queryClient = new QueryClient();
 const VEHICLES_KEY = 'rm-automotive-vehicles-v1';
 const PARTS_KEY = 'rm-automotive-partscars-v1';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-
-if (!clerkPubKey) {
-  throw new Error('Trūksta Clerk prisijungimo rakto.');
-}
+const can = (_permission: string): boolean => true;
 
 const seedVehicles: Vehicle[] = [
   {
@@ -280,7 +242,7 @@ function vehicleCost(vehicle: Vehicle) {
   return vehicle.purchasePrice + totalExpenses(vehicle);
 }
 
-function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
+function AppShell() {
   const [location, setLocation] = useLocation();
   const [vehicles, setVehicles] = useState<Vehicle[]>(() => readStored(VEHICLES_KEY, seedVehicles));
   const [partsCars, setPartsCars] = useState<PartsCar[]>(() => readStored(PARTS_KEY, seedPartsCars));
@@ -481,8 +443,6 @@ function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
   }
 
   const page: PageName = location === '/automobiliai' ? 'vehicles' : location === '/dalys' ? 'parts' : location === '/nustatymai' ? 'settings' : 'dashboard';
-  const can = (permission: PermissionKey) => currentAccess.role === 'owner' || currentAccess.permissions[permission] === true;
-
   return (
     <div className="noise min-h-[100dvh] bg-background text-foreground">
       <Sidebar page={page} mobileOpen={mobileOpen} closeMobile={() => setMobileOpen(false)} can={can} />
@@ -494,9 +454,8 @@ function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
             <div className="flex items-center gap-2 sm:hidden"><span className="font-mono-ui text-[11px] font-bold tracking-[0.14em]">RM</span><span className="text-muted-foreground">/</span><span className="text-sm font-semibold">{page === 'dashboard' ? 'Pagrindinis' : page === 'vehicles' ? 'Automobiliai' : page === 'parts' ? 'Dalys' : 'Nustatymai'}</span></div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className="h-1.5 w-1.5 rounded-full bg-secondary" /> Duomenys saugomi šiame įrenginyje</div>
+             <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground md:flex"><span className="h-1.5 w-1.5 rounded-full bg-secondary" /> Dalys: PostgreSQL · automobiliai ir donorai: naršyklė</div>
             <button className="relative rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Pranešimai" data-testid="button-notifications"><Bell size={18} /><span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" /></button>
-             <AccountMenu />
           </div>
         </header>
         <div className="app-shell min-h-[calc(100dvh-72px)] p-5 sm:p-8">
@@ -518,7 +477,7 @@ function AppShell({ currentAccess }: { currentAccess: AccessUser }) {
 }
 
 type PageName = 'dashboard' | 'vehicles' | 'parts' | 'settings';
-function Sidebar({ page, mobileOpen, closeMobile, can }: { page: PageName; mobileOpen: boolean; closeMobile: () => void; can: (permission: PermissionKey) => boolean }) {
+function Sidebar({ page, mobileOpen, closeMobile, can }: { page: PageName; mobileOpen: boolean; closeMobile: () => void; can: (permission: string) => boolean }) {
   return (
     <>
       {mobileOpen && <button className="fixed inset-0 z-40 bg-foreground/40 lg:hidden" onClick={closeMobile} aria-label="Uždaryti meniu" data-testid="button-close-overlay" />}
@@ -557,7 +516,7 @@ function NavLink({ href, icon, label, active, onClick, testId }: { href: string;
 }
 
 type MoneyRow = { id: string; date: string; label: string; detail: string; amount: number; kind: 'in' | 'out' };
-type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; vehicleProfit: number; partsProfit: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void; can: (permission: PermissionKey) => boolean };
+type DashboardProps = { totals: { spent: number; vehicleRevenue: number; partsRevenue: number; vehicleProfit: number; partsProfit: number; profit: number }; activity: MoneyRow[]; vehicles: Vehicle[]; partsCars: PartsCar[]; navigate: (path: string) => void; can: (permission: string) => boolean };
 function Dashboard({ totals, activity, vehicles, partsCars, navigate, can }: DashboardProps) {
   const [historyFilter, setHistoryFilter] = useState<'all' | 'in' | 'out'>('all');
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -604,14 +563,14 @@ function SectionHeader({ eyebrow, title, body, action, actionLabel, onAction }: 
   return <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 font-mono-ui text-[10px] uppercase tracking-[0.2em] text-secondary">{eyebrow}</p><h1 className="text-3xl font-bold tracking-tight">{title}<span className="text-primary">.</span></h1><p className="mt-2 text-sm text-muted-foreground">{body}</p></div>{onAction && <button onClick={onAction} className="inline-flex w-fit items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid={`button-${actionLabel?.toLowerCase().replaceAll(' ', '-')}`}>{action}{actionLabel}</button>}</div>;
 }
 
-function VehiclesPage({ vehicles, openModal, deleteVehicle, can }: { vehicles: Vehicle[]; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void; can: (permission: PermissionKey) => boolean }) {
+function VehiclesPage({ vehicles, openModal, deleteVehicle, can }: { vehicles: Vehicle[]; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void; can: (permission: string) => boolean }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'sold'>('all');
   const filtered = vehicles.filter((vehicle) => `${vehicle.make} ${vehicle.model} ${vehicle.year} ${vehicle.engine}`.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || vehicle.status === filter));
    return <section className="mx-auto max-w-[1480px]"><SectionHeader eyebrow="Inventorius / 01" title="Automobiliai" body="Pirk, taisyk, parduok. Kiekvienas euras turi savo vietą." action={can('createVehicles') ? <Plus size={17} /> : undefined} actionLabel="Pridėti automobilį" onAction={can('createVehicles') ? () => openModal('vehicle') : undefined} /><div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><label className="relative block max-w-md flex-1"><Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Ieškoti pagal markę, modelį ar metus..." className="h-11 w-full rounded-lg border border-border bg-card pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary focus:ring-2 focus:ring-primary/20" data-testid="input-search-vehicles" /></label><div className="flex rounded-lg border border-border bg-card p-1">{(['all', 'active', 'sold'] as const).map((option) => <button key={option} onClick={() => setFilter(option)} className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${filter === option ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`} data-testid={`button-filter-${option}`}>{option === 'all' ? 'Visi' : option === 'active' ? 'Aktyvūs' : 'Parduoti'}</button>)}</div></div>{filtered.length === 0 ? <EmptyState title={query ? 'Nieko neradome' : 'Automobilių sąrašas tuščias'} body={query ? 'Pabandyk kitą paieškos frazę.' : 'Pridėk pirmą automobilį ir pradėk vesti jo istoriją.'} action={can('createVehicles') ? <button onClick={() => openModal('vehicle')} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground" data-testid="button-empty-add-vehicle"><Plus size={16} /> Pridėti automobilį</button> : undefined} /> : <div className="grid gap-4 lg:grid-cols-2">{filtered.map((vehicle, index) => <VehicleCard key={vehicle.id} vehicle={vehicle} index={index} openModal={openModal} deleteVehicle={deleteVehicle} can={can} />)}</div>}</section>;
 }
 
-function VehicleCard({ vehicle, index, openModal, deleteVehicle, can }: { vehicle: Vehicle; index: number; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void; can: (permission: PermissionKey) => boolean }) {
+function VehicleCard({ vehicle, index, openModal, deleteVehicle, can }: { vehicle: Vehicle; index: number; openModal: (name: 'vehicle' | 'expense' | 'sell', id?: string) => void; deleteVehicle: (id: string) => void; can: (permission: string) => boolean }) {
   const cost = vehicleCost(vehicle);
   const profit = vehicle.status === 'sold' ? (vehicle.salePrice ?? 0) - cost : 0;
   const forecast = (vehicle.askingPrice ?? 0) - cost;
@@ -622,7 +581,7 @@ function InfoCell({ label, value, strong }: { label: string; value: string; stro
   return <div><p className="mb-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{label}</p><p className={`font-mono-ui text-xs ${strong ? 'font-bold text-foreground' : ''}`}>{value}</p></div>;
 }
 
-function PartsPage({ partsCars, openModal, togglePart, deletePartsCar, deletePart, can }: { partsCars: PartsCar[]; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: PermissionKey) => boolean }) {
+function PartsPage({ partsCars, openModal, togglePart, deletePartsCar, deletePart, can }: { partsCars: PartsCar[]; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: string) => boolean }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'inventory' | 'sold'>('all');
   const filtered = partsCars.filter((car) => `${car.make} ${car.model} ${car.year} ${car.engine}`.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || car.parts.some((part) => part.status === filter)));
@@ -650,7 +609,7 @@ function PartQrCatalog({ partsCars }: { partsCars: PartsCar[] }) {
   </section>;
 }
 
-function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, deletePart, can }: { car: PartsCar; index: number; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: PermissionKey) => boolean }) {
+function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, deletePart, can }: { car: PartsCar; index: number; openModal: (name: 'partsCar' | 'part', id?: string, partId?: string) => void; togglePart: (carId: string, partId: string) => void; deletePartsCar: (id: string) => void; deletePart: (carId: string, partId: string) => void; can: (permission: string) => boolean }) {
   const sold = car.parts.filter((part) => part.status === 'sold').reduce((sum, part) => sum + part.price, 0);
   const inventory = car.parts.filter((part) => part.status === 'inventory').reduce((sum, part) => sum + part.price, 0);
   const recovery = car.purchasePrice ? sold / car.purchasePrice * 100 : 0;
@@ -658,125 +617,29 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
 }
 
 function SettingsPage() {
-  const [users, setUsers] = useState<AccessUser[]>([]);
-  const [drafts, setDrafts] = useState<Record<number, Record<string, boolean>>>({});
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [savingId, setSavingId] = useState<number>();
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-
-  async function loadUsers(showRefresh = false) {
-    setError('');
-    if (showRefresh) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const data = await listAccessUsers();
-      setUsers(data);
-      setDrafts(Object.fromEntries(data.map((user) => [user.id, { ...user.permissions }])));
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Nepavyko įkelti naudotojų.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadUsers();
-  }, []);
-
-  async function invite(event: FormEvent) {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-    try {
-      await inviteAccessUser({ email });
-      setEmail('');
-      setMessage('Kvietimas išsiųstas. Naudotojas bus rodomas kaip laukiantis.');
-      await loadUsers();
-    } catch (inviteError) {
-      setError(inviteError instanceof Error ? inviteError.message : 'Kvietimo išsiųsti nepavyko.');
-    }
-  }
-
-  async function saveUser(user: AccessUser, status: 'approved' | 'suspended') {
-    setSavingId(user.id);
-    setError('');
-    setMessage('');
-    try {
-      await updateAccessUser(user.id, {
-        status,
-        permissions: drafts[user.id] ?? user.permissions,
-      });
-      setMessage(status === 'approved' ? `${user.email} patvirtintas.` : `${user.email} sustabdytas.`);
-      await loadUsers();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Pakeitimų išsaugoti nepavyko.');
-    } finally {
-      setSavingId(undefined);
-    }
-  }
-
-  function togglePermission(userId: number, key: PermissionKey) {
-    setDrafts((current) => ({
-      ...current,
-      [userId]: {
-        ...current[userId],
-        [key]: !(current[userId]?.[key] ?? false),
-      },
-    }));
-  }
-
   return <section className="mx-auto max-w-[1200px]">
-    <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-      <div><p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">Sistema / 03</p><h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Nustatymai<span className="text-primary">.</span></h1><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Valdyk darbuotojų paskyras ir tiksliai pasirink, ką kiekvienas gali atlikti.</p></div>
-      <button onClick={() => void loadUsers(true)} disabled={refreshing} className="inline-flex w-fit items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold hover-elevate disabled:opacity-50"><RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> Atnaujinti</button>
+    <div className="mb-8">
+      <p className="mb-3 font-mono-ui text-[11px] uppercase tracking-[0.2em] text-secondary">Sistema / 03</p>
+      <h1 className="text-3xl font-bold tracking-tight sm:text-[38px]">Nustatymai<span className="text-primary">.</span></h1>
+      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Paprasta, atvira darbo erdvė be prisijungimo ir darbuotojų paskyrų.</p>
     </div>
-    {message && <div className="mb-5 flex items-center gap-2 rounded-lg border border-secondary/30 bg-secondary/10 px-4 py-3 text-sm text-secondary"><Check size={16} /> {message}</div>}
-    {error && <div className="mb-5 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"><CircleAlert size={16} className="mt-0.5 shrink-0" /> <span>{error}</span></div>}
-    <div className="mb-7 rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
-      <div className="mb-4 flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary"><UserPlus size={19} /></div><div><h2 className="font-bold">Pakviesti darbuotoją</h2><p className="mt-1 text-sm text-muted-foreground">Kvietimas bus išsiųstas el. paštu per saugų registracijos procesą.</p></div></div>
-      <form onSubmit={invite} className="flex flex-col gap-3 sm:flex-row"><input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="darbuotojas@imone.lt" className={`${inputClass} sm:max-w-md`} data-testid="input-invite-email" /><button type="submit" className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground"><UserPlus size={16} /> Siųsti kvietimą</button></form>
+    <div className="grid gap-5 md:grid-cols-2">
+      <article className="rounded-xl border border-secondary/30 bg-secondary/10 p-5 shadow-sm sm:p-6">
+        <p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Atvira prieiga</p>
+        <h2 className="mt-2 text-xl font-bold">Prisijungti nereikia</h2>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">Visi, kurie atidaro RM Automotive, gali peržiūrėti ir tvarkyti automobilius, donorus bei detales. Prisijungimo, darbuotojų paskyrų ir atskirų leidimų čia nėra.</p>
+      </article>
+      <article className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6">
+        <p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Duomenų saugykla</p>
+        <h2 className="mt-2 text-xl font-bold">Kur saugomi duomenys?</h2>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">Dalys saugomos PostgreSQL duomenų bazėje. Automobilių ir donorų duomenys saugomi šios naršyklės vietinėje saugykloje.</p>
+      </article>
     </div>
-    <div className="mb-4 flex items-center justify-between"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Prieigos registras</p><h2 className="mt-1 text-xl font-bold">Naudotojai</h2></div><span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">{users.length} paskyros</span></div>
-    {loading ? <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">Kraunamas naudotojų sąrašas...</div> : users.length === 0 ? <EmptyState title="Naudotojų nėra" body="Pakviesk pirmą darbuotoją aukščiau." /> : <div className="space-y-4">{users.map((user) => {
-      const isOwner = user.role === 'owner';
-      const draft = drafts[user.id] ?? user.permissions;
-      const groups = Array.from(new Set(permissionDefinitions.map((permission) => permission.group)));
-      return <article key={user.id} className="rounded-xl border border-border bg-card p-5 shadow-sm sm:p-6" data-testid={`card-access-user-${user.id}`}>
-        <div className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isOwner ? 'bg-primary/15 text-primary' : 'bg-accent text-accent-foreground'}`}>{isOwner ? <ShieldCheck size={19} /> : <span className="text-sm font-bold">{user.name.slice(0, 1).toUpperCase()}</span>}</div><div><div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{user.name}</h3><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${isOwner ? 'bg-primary/15 text-primary' : user.status === 'approved' ? 'bg-secondary/15 text-secondary' : user.status === 'suspended' ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'}`}>{isOwner ? 'Savininkas' : user.status === 'approved' ? 'Patvirtintas' : user.status === 'suspended' ? 'Sustabdytas' : 'Laukiantis'}</span></div><p className="mt-1 text-sm text-muted-foreground">{user.email}</p>{!user.clerkUserId && <p className="mt-1 text-xs text-muted-foreground">Dar neužbaigė registracijos</p>}</div></div>
-          {!isOwner && <div className="flex flex-wrap gap-2">{user.status === 'pending' && user.clerkUserId && <button onClick={() => void saveUser(user, 'approved')} disabled={savingId === user.id} className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-bold text-secondary-foreground disabled:opacity-50"><Check size={14} /> Patvirtinti</button>}{user.status === 'pending' && !user.clerkUserId && <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">Laukiama registracijos</span>}{user.status === 'approved' && <button onClick={() => void saveUser(user, 'suspended')} disabled={savingId === user.id} className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-2 text-xs font-bold text-destructive hover:bg-destructive/10 disabled:opacity-50"><Ban size={14} /> Sustabdyti</button>}{user.status === 'suspended' && <button onClick={() => void saveUser(user, 'approved')} disabled={savingId === user.id || !user.clerkUserId} className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-bold text-secondary-foreground disabled:opacity-50"><Check size={14} /> Vėl patvirtinti</button>}</div>}
-        </div>
-        <div className="pt-5"><div className="mb-3 flex items-center justify-between"><div><p className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-muted-foreground">Operacijų leidimai</p><p className="mt-1 text-xs text-muted-foreground">{isOwner ? 'Savininkas turi pilną prieigą.' : 'Pažymėk tik tas operacijas, kurių reikia darbuotojui.'}</p></div>{!isOwner && <button onClick={() => void saveUser(user, user.status === 'approved' ? 'approved' : 'suspended')} disabled={savingId === user.id || user.status === 'pending' || !user.clerkUserId} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-bold hover-elevate disabled:cursor-not-allowed disabled:opacity-40"><Save size={14} /> Išsaugoti teises</button>}</div>
-          {isOwner ? <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm text-muted-foreground">Visos operacijos prieinamos savininkui pagal nutylėjimą.</div> : <div className="grid gap-4 md:grid-cols-2">{groups.map((group) => <div key={group} className="rounded-lg border border-border/70 p-3"><p className="mb-2 font-mono-ui text-[10px] uppercase tracking-[0.14em] text-secondary">{group}</p><div className="space-y-2">{permissionDefinitions.filter((permission) => permission.group === group).map((permission) => <label key={permission.key} className="flex cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(draft[permission.key])} onChange={() => togglePermission(user.id, permission.key)} className="h-4 w-4 accent-primary" /> {permission.label}</label>)}</div></div>)}</div>}
-        </div>
-      </article>;
-    })}</div>}
   </section>;
 }
 
 function EmptyState({ title, body, action }: { title: string; body: string; action?: ReactNode }) {
   return <div className="rounded-xl border border-dashed border-border bg-card/55 px-6 py-16 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-muted text-muted-foreground"><ClipboardList size={22} /></div><h2 className="mt-4 text-lg font-bold">{title}</h2><p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">{body}</p>{action}</div>;
-}
-
-function AccountMenu() {
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const [open, setOpen] = useState(false);
-  const initials = `${user?.firstName?.[0] ?? ''}${user?.lastName?.[0] ?? user?.primaryEmailAddress?.emailAddress?.[0] ?? 'R'}`.toUpperCase();
-
-  return <div className="relative">
-    <button onClick={() => setOpen((current) => !current)} className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground" aria-label="Atidaryti paskyros meniu" data-testid="button-account-menu">{initials.slice(0, 2)}</button>
-    {open && <div className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-card p-3 shadow-xl">
-      <p className="truncate text-sm font-semibold">{user?.fullName || 'Naudotojas'}</p>
-      <p className="mt-1 truncate text-xs text-muted-foreground">{user?.primaryEmailAddress?.emailAddress}</p>
-      <div className="my-3 border-t border-border" />
-      <button onClick={() => signOut({ redirectUrl: basePath || '/' })} className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-destructive hover:bg-destructive/10" data-testid="button-sign-out">Atsijungti</button>
-    </div>}
-  </div>;
 }
 
 function Modal({ title, eyebrow, children, close }: { title: string; eyebrow: string; children: ReactNode; close: () => void }) {
@@ -819,98 +682,6 @@ function PartModal({ car, part, close, save, update }: { car?: PartsCar; part?: 
   const [form, setForm] = useState({ name: part?.name ?? '', code: part?.code ?? '', price: String(part?.price ?? ''), location: part?.location ?? '' });
   function submit(event: FormEvent) { event.preventDefault(); if (!car) return; const payload = { name: form.name, code: form.code, price: Number(form.price), location: form.location || undefined }; if (part) update(car.id, part.id, payload); else save(car.id, payload); }
   return <Modal title={part ? 'Redaguoti detalę' : 'Pridėti detalę'} eyebrow={`${car?.make ?? ''} ${car?.model ?? ''}`} close={close}><form onSubmit={submit} className="grid gap-4 p-5 sm:p-6"><Field label="Detalės pavadinimas"><input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="pvz. Generatorius" data-testid="input-part-name" /></Field><div className="grid gap-4 sm:grid-cols-2"><Field label="OEM kodas"><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className={inputClass} placeholder="nebūtina" data-testid="input-part-code" /></Field><Field label="Kaina, EUR"><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className={inputClass} placeholder="0,00" data-testid="input-part-price" /></Field></div><Field label="Laikymo vieta"><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className={inputClass} placeholder="pvz. Lentyna B3 / dėžė 12" data-testid="input-part-location" /></Field><div className="mt-2 flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={close} className="rounded-lg px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:bg-muted" data-testid="button-cancel-part">Atšaukti</button><button type="submit" className="rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="button-save-part">{part ? 'Išsaugoti pakeitimus' : 'Pridėti detalę'}</button></div></form></Modal>;
-}
-
-function AuthLoading() {
-  return <div className="flex min-h-[100dvh] items-center justify-center bg-background"><div className="flex items-center gap-3 rounded-xl border border-border bg-card px-5 py-4 text-sm text-muted-foreground shadow-sm"><span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> Tikrinamas prisijungimas...</div></div>;
-}
-
-function AuthLanding() {
-  const [, setLocation] = useLocation();
-  return <main className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
-    <section className="w-full max-w-4xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-      <div className="grid md:grid-cols-[1.05fr_0.95fr]">
-        <div className="bg-foreground p-8 text-background sm:p-12">
-          <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary font-mono-ui text-sm font-bold text-primary-foreground">RM</span><div><p className="text-sm font-bold">RM Automotive</p><p className="font-mono-ui text-[9px] uppercase tracking-[0.18em] text-background/45">operator's ledger</p></div></div>
-          <p className="mt-16 font-mono-ui text-[10px] uppercase tracking-[0.2em] text-primary">Privati darbo erdvė</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Tavo automobilių verslo knyga.</h1>
-          <p className="mt-4 max-w-md text-sm leading-6 text-background/65">Pirkimai, remontai, pardavimai ir dalių sandėlis vienoje saugioje vietoje.</p>
-        </div>
-        <div className="flex flex-col justify-center p-8 sm:p-12">
-          <p className="font-mono-ui text-[10px] uppercase tracking-[0.18em] text-secondary">Prisijungimas</p>
-          <h2 className="mt-2 text-2xl font-bold">Sveikas sugrįžęs.</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Prisijunk, kad atidarytum savo RM Automotive darbo stalą.</p>
-          <button onClick={() => setLocation('/sign-in')} className="mt-7 inline-flex items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-transform hover:-translate-y-0.5" data-testid="button-open-sign-in">Prisijungti</button>
-          <p className="mt-5 text-center text-xs leading-5 text-muted-foreground">
-            Neturi paskyros?{' '}
-            <a href={`${basePath}/sign-up`} className="font-bold text-foreground underline decoration-primary decoration-2 underline-offset-4 hover:text-primary" data-testid="link-open-sign-up">
-              Sukurti paskyrą
-            </a>
-          </p>
-        </div>
-      </div>
-    </section>
-  </main>;
-}
-
-function AccessBlocked({ status }: { status: 'pending' | 'suspended' }) {
-  const { signOut } = useClerk();
-  const pending = status === 'pending';
-  return <main className="noise flex min-h-[100dvh] items-center justify-center bg-background px-5 py-10">
-    <section className="w-full max-w-lg rounded-2xl border border-border bg-card p-8 text-center shadow-2xl sm:p-12">
-      <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ${pending ? 'bg-primary/15 text-primary' : 'bg-destructive/10 text-destructive'}`}>{pending ? <ShieldCheck size={26} /> : <Ban size={26} />}</div>
-      <p className="mt-7 font-mono-ui text-[10px] uppercase tracking-[0.2em] text-secondary">Prieiga prie RM Automotive</p>
-      <h1 className="mt-3 text-2xl font-bold">{pending ? 'Paskyra laukia patvirtinimo.' : 'Paskyra sustabdyta.'}</h1>
-      <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{pending ? 'Savininkas turi patvirtinti tavo paskyrą prieš atidarant darbo stalą. Pabandyk dar kartą vėliau.' : 'Šiuo metu negali naudotis aplikacija. Susisiek su savininku, jei manai, kad tai klaida.'}</p>
-      <button onClick={() => void signOut()} className="mt-7 rounded-lg border border-border px-4 py-2.5 text-sm font-bold hover-elevate">Atsijungti</button>
-    </section>
-  </main>;
-}
-
-function AccessGate() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const [access, setAccess] = useState<AccessUser>();
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    let cancelled = false;
-    getAccessMe()
-      .then((data) => {
-        if (!cancelled) setAccess(data);
-      })
-      .catch((loadError) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'Nepavyko patikrinti prieigos.');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, isSignedIn]);
-
-  if (!isLoaded) return <AuthLoading />;
-  if (!isSignedIn) return <Redirect to="/sign-in" />;
-  if (error) return <div className="flex min-h-[100dvh] items-center justify-center bg-background px-5 text-center"><div><CircleAlert className="mx-auto text-destructive" /><p className="mt-3 text-sm text-muted-foreground">{error}</p><button onClick={() => window.location.reload()} className="mt-5 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground">Bandyti dar kartą</button></div></div>;
-  if (!access) return <AuthLoading />;
-  if (access.status === 'pending' || access.status === 'suspended') return <AccessBlocked status={access.status} />;
-  return <ErrorBoundary resetKey={window.location.pathname}><AppShell currentAccess={access} /></ErrorBoundary>;
-}
-
-function SignInPage() {
-  return <div className="auth-page flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>;
-}
-
-function SignUpPage() {
-  return <div className="auth-page flex min-h-[100dvh] items-center justify-center bg-background px-4 py-8"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
-}
-
-function HomeRoute() {
-  const { isLoaded, isSignedIn } = useAuth();
-  if (!isLoaded) return <AuthLoading />;
-  return isSignedIn ? <AccessGate /> : <AuthLanding />;
-}
-
-function ProtectedApp() {
-  return <AccessGate />;
 }
 
 function PublicPartPage() {
@@ -967,73 +738,19 @@ function PublicPartPage() {
 
 function Router() {
   return <Switch>
-    <Route path="/" component={HomeRoute} />
-    <Route path="/sign-in/*?" component={SignInPage} />
-    <Route path="/sign-up/*?" component={SignUpPage} />
     <Route path="/detale/:publicId" component={PublicPartPage} />
-    <Route path="/automobiliai" component={ProtectedApp} />
-    <Route path="/dalys" component={ProtectedApp} />
-    <Route path="/nustatymai" component={ProtectedApp} />
-    <Route component={ProtectedApp} />
+    <Route path="/sign-in/*?" component={() => <Redirect to="/" />} />
+    <Route path="/sign-up/*?" component={() => <Redirect to="/" />} />
+    <Route path="/" component={AppShell} />
+    <Route path="/automobiliai" component={AppShell} />
+    <Route path="/dalys" component={AppShell} />
+    <Route path="/nustatymai" component={AppShell} />
+    <Route component={AppShell} />
   </Switch>;
 }
 
-function ClerkApp() {
-  const [, setLocation] = useLocation();
-  function stripBase(path: string) {
-    return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
-  }
-
-  return <ClerkProvider
-    publishableKey={clerkPubKey}
-    proxyUrl={clerkProxyUrl}
-    appearance={{
-      theme: shadcn,
-      cssLayerName: 'clerk',
-      options: {
-        logoPlacement: 'inside',
-        logoLinkUrl: basePath || '/',
-        logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
-      },
-      variables: {
-        colorPrimary: '#f7941d',
-        colorForeground: '#202630',
-        colorMutedForeground: '#6d727b',
-        colorBackground: '#fbfaf8',
-        colorInput: '#f7f4ef',
-        colorInputForeground: '#202630',
-        colorNeutral: '#d9d2c7',
-        fontFamily: 'DM Sans, sans-serif',
-        borderRadius: '0.75rem',
-      },
-      elements: {
-        rootBox: 'w-full flex justify-center',
-        cardBox: 'bg-[#fbfaf8] rounded-2xl w-[440px] max-w-full overflow-hidden',
-        card: '!shadow-none !border-0 !bg-transparent !rounded-none',
-        footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
-        headerTitle: 'text-[#202630]',
-        headerSubtitle: 'text-[#6d727b]',
-        formFieldLabel: 'text-[#202630]',
-        footerActionLink: 'text-[#157a77]',
-        footerActionText: 'text-[#6d727b]',
-        dividerText: 'text-[#6d727b]',
-        footerAction: 'hidden',
-        formButtonPrimary: 'bg-[#f7941d] text-[#202630] hover:bg-[#df7d0e]',
-        formFieldInput: 'bg-[#f7f4ef] border-[#d9d2c7] text-[#202630]',
-        socialButtonsBlockButton: 'border-[#d9d2c7] bg-[#fbfaf8] text-[#202630]',
-      },
-    }}
-    signInUrl={`${basePath}/sign-in`}
-    signUpUrl={`${basePath}/sign-up`}
-    routerPush={(to) => setLocation(stripBase(to))}
-    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
-  >
-    <QueryClientProvider client={queryClient}><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>
-  </ClerkProvider>;
-}
-
 function App() {
-  return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>;
+  return <WouterRouter base={basePath}><QueryClientProvider client={queryClient}><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider></WouterRouter>;
 }
 
 export default App;

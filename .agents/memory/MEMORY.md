@@ -1,2 +1,3 @@
 - [Generated Zod compatibility](generated-zod-compatibility.md) — OpenAPI codegen emits Zod 4 helpers, but this workspace currently resolves Zod 3.
 - [Workspace package installation](workspace-package-installation.md) — package helper targets the root; artifact dependencies may need package-file scoping.
+- [Open access](open-access.md) — login and employee restrictions were intentionally removed at the user's request.

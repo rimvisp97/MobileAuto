@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { getAuth } from "@clerk/express";
 import {
   CreatePartBody,
   CreatePartResponse,
@@ -13,9 +12,9 @@ import {
   UpdatePartParams,
   UpdatePartResponse,
 } from "@workspace/api-zod";
-import { accessUsersTable, db, partsTable } from "@workspace/db";
+import { db, partsTable } from "@workspace/db";
 import { desc, eq, inArray } from "drizzle-orm";
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, type IRouter } from "express";
 
 const router: IRouter = Router();
 
@@ -36,42 +35,12 @@ function serialize(row: typeof partsTable.$inferSelect) {
   };
 }
 
-async function requirePartsAccess(
-  req: Request,
-  res: Response,
-  permission: "viewParts" | "manageParts" | "sellParts",
-) {
-  const { userId } = getAuth(req);
-  if (!userId) {
-    res.status(401).json({ error: "Prisijungimas reikalingas." });
-    return undefined;
-  }
-
-  const [access] = await db
-    .select()
-    .from(accessUsersTable)
-    .where(eq(accessUsersTable.clerkUserId, userId))
-    .limit(1);
-
-  if (
-    !access ||
-    access.status !== "approved" ||
-    (access.role !== "owner" && access.permissions?.[permission] !== true)
-  ) {
-    res.status(403).json({ error: "Šiai operacijai neturite leidimo." });
-    return undefined;
-  }
-  return access;
-}
-
 router.get("/parts", async (req, res): Promise<void> => {
-  if (!(await requirePartsAccess(req, res, "viewParts"))) return;
   const rows = await db.select().from(partsTable).orderBy(desc(partsTable.createdAt));
   res.json(ListPartsResponse.parse(rows.map(serialize)));
 });
 
 router.post("/parts", async (req, res): Promise<void> => {
-  if (!(await requirePartsAccess(req, res, "manageParts"))) return;
   const body = CreatePartBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: "Neteisingi detalės duomenys." });
@@ -90,7 +59,6 @@ router.post("/parts", async (req, res): Promise<void> => {
 });
 
 router.post("/parts/import", async (req, res): Promise<void> => {
-  if (!(await requirePartsAccess(req, res, "manageParts"))) return;
   const body = ImportPartsBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: "Nepavyko importuoti esamų detalių." });
@@ -133,8 +101,6 @@ router.patch("/parts/:partId", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Neteisingi detalės duomenys." });
     return;
   }
-  const requiredPermission = body.data.status == null ? "manageParts" : "sellParts";
-  if (!(await requirePartsAccess(req, res, requiredPermission))) return;
 
   const values: Partial<typeof partsTable.$inferInsert> = {};
   if (body.data.name !== undefined) values.name = body.data.name;
@@ -158,7 +124,6 @@ router.patch("/parts/:partId", async (req, res): Promise<void> => {
 });
 
 router.delete("/parts/:partId", async (req, res): Promise<void> => {
-  if (!(await requirePartsAccess(req, res, "manageParts"))) return;
   const params = DeletePartParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Neteisingas detalės identifikatorius." });
