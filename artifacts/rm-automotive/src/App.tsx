@@ -2,9 +2,9 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 're
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createPart, deletePart as deletePartApi, getPublicPart, importParts, listParts, updatePart as updatePartApi } from '@workspace/api-client-react';
 import type { Part as ApiPart } from '@workspace/api-client-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { PartQrDialog } from '@/components/part-qr-dialog';
 import {
   Activity,
   ArrowDownLeft,
@@ -592,7 +592,168 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
   const sold = car.parts.filter((part) => part.status === 'sold').reduce((sum, part) => sum + part.price, 0);
   const inventory = car.parts.filter((part) => part.status === 'inventory').reduce((sum, part) => sum + part.price, 0);
   const recovery = car.purchasePrice ? sold / car.purchasePrice * 100 : 0;
-  return <article className={`lift overflow-hidden rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-${Math.min(index + 1, 3)}`} data-testid={`card-parts-car-${car.id}`}><div className="flex flex-col gap-5 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6"><div className="flex items-start gap-4"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground"><CarFront size={21} /></div><div><div className="mb-1 flex flex-wrap items-center gap-2"><span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-secondary">Donoras · {shortDate(car.createdAt)}</span>{car.location && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{car.location}</span>}</div><h2 className="text-xl font-bold">{car.year} {car.make} {car.model}</h2><p className="mt-1 text-sm text-muted-foreground">{car.engine} <span className="mx-1">·</span> {car.mileage.toLocaleString('lt-LT')} km <span className="mx-1">·</span> pirkta už {money(car.purchasePrice)}</p></div></div><div className="flex items-center gap-2">{can('manageDonors') && <><button onClick={() => openModal('partsCar', car.id)} className="rounded-lg p-2 text-muted-foreground hover-elevate" aria-label="Redaguoti donorą" data-testid={`button-edit-donor-${car.id}`}><Pencil size={16} /></button><button onClick={() => deletePartsCar(car.id)} className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti donorą" data-testid={`button-delete-donor-${car.id}`}><Trash2 size={16} /></button></>}{can('manageParts') && <button onClick={() => openModal('part', car.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground" data-testid={`button-add-part-${car.id}`}><Plus size={15} /> Pridėti detalę</button>}</div></div><div className="grid border-b border-border bg-muted/30 sm:grid-cols-4"><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Parduota</p><p className="mt-1 font-mono-ui text-sm font-bold text-secondary">{money(sold)}</p></div><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Sandėlyje</p><p className="mt-1 font-mono-ui text-sm font-bold">{money(inventory)}</p></div><div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Atsipirkimas</p><p className={`mt-1 font-mono-ui text-sm font-bold ${recovery >= 100 ? 'text-secondary' : 'text-foreground'}`}>{Math.round(recovery)}%</p></div><div className="px-5 py-3 sm:px-6"><p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Detalių</p><p className="mt-1 font-mono-ui text-sm font-bold">{car.parts.length}</p></div></div>{car.parts.length > 0 ? <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left"><thead><tr className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground"><th className="px-5 py-3 font-mono-ui sm:px-6">Detalė</th><th className="px-3 py-3 font-mono-ui">Kodas</th><th className="px-3 py-3 font-mono-ui">Vieta</th><th className="px-3 py-3 font-mono-ui">Kaina</th><th className="px-5 py-3 text-right font-mono-ui sm:px-6">Būsena</th></tr></thead><tbody>{car.parts.map((part) => <tr key={part.id} className="border-t border-border/70 hover:bg-muted/30" data-testid={`row-part-${part.id}`}><td className="px-5 py-3.5 text-sm font-semibold sm:px-6"><div className="flex items-center gap-3"><span>{part.name}</span>{part.publicId && <Link href={`/detale/${part.publicId}`} className="shrink-0 rounded-md border border-border bg-white p-1" aria-label={`Atidaryti ${part.name} QR puslapį`}><QRCodeSVG value={partUrl(part.publicId)} size={72} level="M" marginSize={4} /></Link>}</div></td><td className="px-3 py-3.5 font-mono-ui text-xs text-muted-foreground">{part.code || '—'}</td><td className="px-3 py-3.5 text-xs text-muted-foreground">{part.location || '—'}</td><td className="px-3 py-3.5 font-mono-ui text-xs">{money(part.price)}</td><td className="px-5 py-3.5 text-right sm:px-6"><div className="flex items-center justify-end gap-1.5">{can('manageParts') && <><button onClick={() => openModal('part', car.id, part.id)} className="rounded-md p-1.5 text-muted-foreground hover-elevate" aria-label="Redaguoti detalę" data-testid={`button-edit-part-${part.id}`}><Pencil size={14} /></button><button onClick={() => deletePart(car.id, part.id)} className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Pašalinti detalę" data-testid={`button-delete-part-${part.id}`}><Trash2 size={14} /></button></>}{can('sellParts') && <button onClick={() => togglePart(car.id, part.id)} className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`} data-testid={`button-toggle-part-${part.id}`}>{part.status === 'sold' ? <Check size={12} /> : <Package size={12} />}{part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}</button>}</div></td></tr>)}</tbody></table></div> : <div className="paper-line px-6 py-8 text-center"><Package size={24} className="mx-auto text-muted-foreground/50" /><p className="mt-3 text-sm font-semibold">Detalės dar nesurašytos</p><p className="mt-1 text-xs text-muted-foreground">Pridėk pirmą detalę iš šio donoro.</p></div>}</article>;
+  return (
+    <article
+      className={`lift overflow-hidden rounded-xl border border-border bg-card shadow-sm reveal reveal-delay-${Math.min(index + 1, 3)}`}
+      data-testid={`card-parts-car-${car.id}`}
+    >
+      <div className="flex flex-col gap-5 border-b border-border p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+            <CarFront size={21} />
+          </div>
+          <div>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="font-mono-ui text-[10px] uppercase tracking-[0.15em] text-secondary">
+                Donoras · {shortDate(car.createdAt)}
+              </span>
+              {car.location && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                  {car.location}
+                </span>
+              )}
+            </div>
+            <h2 className="text-xl font-bold">{car.year} {car.make} {car.model}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {car.engine} <span className="mx-1">·</span> {car.mileage.toLocaleString('lt-LT')} km{' '}
+              <span className="mx-1">·</span> pirkta už {money(car.purchasePrice)}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {can('manageDonors') && (
+            <>
+              <button
+                onClick={() => openModal('partsCar', car.id)}
+                className="rounded-lg p-2 text-muted-foreground hover-elevate"
+                aria-label="Redaguoti donorą"
+                data-testid={`button-edit-donor-${car.id}`}
+              >
+                <Pencil size={16} />
+              </button>
+              <button
+                onClick={() => deletePartsCar(car.id)}
+                className="rounded-lg p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                aria-label="Pašalinti donorą"
+                data-testid={`button-delete-donor-${car.id}`}
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          )}
+          {can('manageParts') && (
+            <button
+              onClick={() => openModal('part', car.id)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-bold text-primary-foreground"
+              data-testid={`button-add-part-${car.id}`}
+            >
+              <Plus size={15} /> Pridėti detalę
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="grid border-b border-border bg-muted/30 sm:grid-cols-4">
+        <div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6">
+          <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Parduota</p>
+          <p className="mt-1 font-mono-ui text-sm font-bold text-secondary">{money(sold)}</p>
+        </div>
+        <div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6">
+          <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Sandėlyje</p>
+          <p className="mt-1 font-mono-ui text-sm font-bold">{money(inventory)}</p>
+        </div>
+        <div className="border-b border-border px-5 py-3 sm:border-b-0 sm:border-r sm:px-6">
+          <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Atsipirkimas</p>
+          <p className={`mt-1 font-mono-ui text-sm font-bold ${recovery >= 100 ? 'text-secondary' : 'text-foreground'}`}>
+            {Math.round(recovery)}%
+          </p>
+        </div>
+        <div className="px-5 py-3 sm:px-6">
+          <p className="text-[10px] uppercase tracking-[0.13em] text-muted-foreground">Detalių</p>
+          <p className="mt-1 font-mono-ui text-sm font-bold">{car.parts.length}</p>
+        </div>
+      </div>
+      {car.parts.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[680px] text-left">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                <th className="px-5 py-3 font-mono-ui sm:px-6">Detalė</th>
+                <th className="px-3 py-3 font-mono-ui">Kodas</th>
+                <th className="px-3 py-3 font-mono-ui">Vieta</th>
+                <th className="px-3 py-3 font-mono-ui">Kaina</th>
+                <th className="px-5 py-3 text-right font-mono-ui sm:px-6">Būsena</th>
+                <th className="w-14 px-3 py-3 text-center font-mono-ui" aria-label="QR kodas">QR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {car.parts.map((part) => (
+                <tr
+                  key={part.id}
+                  className="border-t border-border/70 hover:bg-muted/30"
+                  data-testid={`row-part-${part.id}`}
+                >
+                  <td className="px-5 py-3.5 text-sm font-semibold sm:px-6">{part.name}</td>
+                  <td className="px-3 py-3.5 font-mono-ui text-xs text-muted-foreground">{part.code || '—'}</td>
+                  <td className="px-3 py-3.5 text-xs text-muted-foreground">{part.location || '—'}</td>
+                  <td className="px-3 py-3.5 font-mono-ui text-xs">{money(part.price)}</td>
+                  <td className="px-5 py-3.5 text-right sm:px-6">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {can('manageParts') && (
+                        <>
+                          <button
+                            onClick={() => openModal('part', car.id, part.id)}
+                            className="rounded-md p-1.5 text-muted-foreground hover-elevate"
+                            aria-label="Redaguoti detalę"
+                            data-testid={`button-edit-part-${part.id}`}
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            onClick={() => deletePart(car.id, part.id)}
+                            className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            aria-label="Pašalinti detalę"
+                            data-testid={`button-delete-part-${part.id}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                      {can('sellParts') && (
+                        <button
+                          onClick={() => togglePart(car.id, part.id)}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${part.status === 'sold' ? 'bg-secondary/15 text-secondary' : 'bg-primary/15 text-primary'}`}
+                          data-testid={`button-toggle-part-${part.id}`}
+                        >
+                          {part.status === 'sold' ? <Check size={12} /> : <Package size={12} />}
+                          {part.status === 'sold' ? 'Parduota' : 'Sandėlyje'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td className="w-14 px-3 py-3.5 text-center">
+                    {part.publicId && (
+                      <PartQrDialog
+                        publicId={part.publicId}
+                        name={part.name}
+                        code={part.code}
+                        url={partUrl(part.publicId)}
+                      />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="paper-line px-6 py-8 text-center">
+          <Package size={24} className="mx-auto text-muted-foreground/50" />
+          <p className="mt-3 text-sm font-semibold">Detalės dar nesurašytos</p>
+          <p className="mt-1 text-xs text-muted-foreground">Pridėk pirmą detalę iš šio donoro.</p>
+        </div>
+      )}
+    </article>
+  );
 }
 
 function SettingsPage() {
