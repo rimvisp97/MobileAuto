@@ -498,7 +498,12 @@ export function LabelPrintSetup({ open, onOpenChange, data }: LabelPrintSetupPro
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <h2 id="label-preview-heading" className="text-sm font-bold">Peržiūra</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">{printWidthMm} × {printHeightMm} mm · {quantityValid ? quantityNumber : '—'} vnt.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {printWidthMm} × {printHeightMm} mm · {quantityValid ? quantityNumber : '—'} vnt. ·{' '}
+                    <span data-testid="label-layout-indicator" className="font-semibold text-foreground">
+                      {layout.orientation === 'horizontal' ? 'Horizontalus' : 'Vertikalus'}
+                    </span>
+                  </p>
                 </div>
                 <span className="rounded-full border border-border bg-background px-2 py-1 font-mono-ui text-[10px] font-bold text-muted-foreground">1:1 maketas</span>
               </div>
