@@ -57,21 +57,32 @@ function replacePrintTokens(styles: string, widthMm: number, heightMm: number) {
 }
 
 async function waitForPrintDocument(popup: Window) {
+  const timeout = (milliseconds: number) => new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
   const documentReady = popup.document.readyState === 'complete'
     ? Promise.resolve()
     : new Promise<void>((resolve) => {
       popup.addEventListener('load', () => resolve(), { once: true });
     });
-  await documentReady;
-  if (popup.document.fonts?.ready) await popup.document.fonts.ready;
+  await Promise.race([documentReady, timeout(750)]);
+  if (popup.document.fonts?.ready) {
+    await Promise.race([popup.document.fonts.ready, timeout(500)]);
+  }
   const images = Array.from(popup.document.images);
-  await Promise.all(images.map((image) => image.complete
-    ? Promise.resolve()
-    : new Promise<void>((resolve) => {
-      image.addEventListener('load', () => resolve(), { once: true });
-      image.addEventListener('error', () => resolve(), { once: true });
-    })));
-  await new Promise<void>((resolve) => popup.requestAnimationFrame(() => resolve()));
+  await Promise.race([
+    Promise.all(images.map((image) => image.complete
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => {
+        image.addEventListener('load', () => resolve(), { once: true });
+        image.addEventListener('error', () => resolve(), { once: true });
+      }))),
+    timeout(750),
+  ]);
+  await Promise.race([
+    new Promise<void>((resolve) => popup.requestAnimationFrame(() => resolve())),
+    timeout(250),
+  ]);
 }
 
 export async function openLabelPrintWindow(options: LabelPrintWindowOptions) {
