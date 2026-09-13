@@ -277,12 +277,8 @@ export function useBusinessSync() {
       void syncRef.current?.(false);
     };
     window.addEventListener('focus', refreshOnFocus);
-    const timer = window.setInterval(() => {
-      void syncRef.current?.(false);
-    }, 10_000);
     return () => {
       window.removeEventListener('focus', refreshOnFocus);
-      window.clearInterval(timer);
       syncRef.current = undefined;
     };
   }, [sync]);

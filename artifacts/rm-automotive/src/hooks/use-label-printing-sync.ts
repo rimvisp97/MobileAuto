@@ -346,14 +346,10 @@ export function useLabelPrintingSync(open: boolean) {
     const refreshOnFocus = () => {
       if (!cancelled) void refresh();
     };
-    const timer = window.setInterval(() => {
-      if (!cancelled) void refresh();
-    }, 8_000);
     window.addEventListener('focus', refreshOnFocus);
     return () => {
       cancelled = true;
       window.removeEventListener('focus', refreshOnFocus);
-      window.clearInterval(timer);
       requestIdRef.current += 1;
     };
   }, [open, refresh, syncNow]);
