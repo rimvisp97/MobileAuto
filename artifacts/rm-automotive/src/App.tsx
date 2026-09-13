@@ -677,12 +677,12 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
           <table className="w-full min-w-[680px] text-left">
             <thead>
               <tr className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                <th className="w-14 py-3 pl-5 pr-0 text-center font-mono-ui sm:pl-6" aria-label="QR kodas">QR</th>
                 <th className="px-5 py-3 font-mono-ui sm:px-6">Detalė</th>
                 <th className="px-3 py-3 font-mono-ui">Kodas</th>
                 <th className="px-3 py-3 font-mono-ui">Vieta</th>
                 <th className="px-3 py-3 font-mono-ui">Kaina</th>
                 <th className="px-5 py-3 text-right font-mono-ui sm:px-6">Būsena</th>
-                <th className="w-14 px-3 py-3 text-center font-mono-ui" aria-label="QR kodas">QR</th>
               </tr>
             </thead>
             <tbody>
@@ -692,6 +692,16 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
                   className="border-t border-border/70 hover:bg-muted/30"
                   data-testid={`row-part-${part.id}`}
                 >
+                  <td className="w-14 py-3.5 pl-5 pr-0 text-center sm:pl-6">
+                    {part.publicId && (
+                      <PartQrDialog
+                        publicId={part.publicId}
+                        name={part.name}
+                        code={part.code}
+                        url={partUrl(part.publicId)}
+                      />
+                    )}
+                  </td>
                   <td className="px-5 py-3.5 text-sm font-semibold sm:px-6">{part.name}</td>
                   <td className="px-3 py-3.5 font-mono-ui text-xs text-muted-foreground">{part.code || '—'}</td>
                   <td className="px-3 py-3.5 text-xs text-muted-foreground">{part.location || '—'}</td>
@@ -729,16 +739,6 @@ function PartsCarCard({ car, index, openModal, togglePart, deletePartsCar, delet
                         </button>
                       )}
                     </div>
-                  </td>
-                  <td className="w-14 px-3 py-3.5 text-center">
-                    {part.publicId && (
-                      <PartQrDialog
-                        publicId={part.publicId}
-                        name={part.name}
-                        code={part.code}
-                        url={partUrl(part.publicId)}
-                      />
-                    )}
                   </td>
                 </tr>
               ))}
